@@ -719,7 +719,8 @@ class CoherenceManager(object):
                     ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
                 if asignaler is not None:
                     ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
-                waiter.close()
+                if waiter is not None:
+                    waiter.close()
             dsignaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             asignaler = ipsub_.listen_decode(abortprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             ssignaler = lambda key, contact = self.p2p_pub_binds : signaler(None, None, (None, [key], contact))
@@ -734,20 +735,20 @@ class CoherenceManager(object):
                     success = True
                 else:
                     # Ok, go for it asynchronously
-                    running = [waiter]
                     ioloop = self.ioloop
                     waiter_stream = ZMQStream(waiter, ioloop)
+                    running = [waiter_stream]
 
                     def abort(send_abort = True):
                         if running:
                             # Do an atomic waiter grab, and recheck that it was still running
-                            waiter = running.pop()
-                            if waiter is not None:
-                                waiter_stream.stop_on_recv()
-                                unlisten_all(waiter)
+                            waiter_stream = running.pop()
+                            if waiter_stream is not None:
+                                unlisten_all(None)
                                 if timeout_handle is not None:
                                     ioloop.remove_timeout(timeout_handle)
                                 periodic_check.stop()
+                                waiter_stream.close()
                                 if send_abort:
                                     callback(False)
 
