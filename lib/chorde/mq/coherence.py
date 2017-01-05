@@ -6,6 +6,8 @@ import weakref
 import itertools
 import json
 import zmq
+from zmq.eventloop.zmqstream import ZMQStream
+from zmq.eventloop.ioloop import PeriodicCallback
 import time
 import operator
 
@@ -121,6 +123,12 @@ def _swallow_connrefused(onerror):
 def _noop(*p, **kw):
     return
 
+def _noop_with_callback(*p, **kw):
+    callback = kw.get('callback')
+    if callback is not None and callable(callback):
+        callback(None)
+    return
+
 class CoherenceManager(object):
     def __init__(self, namespace, private, shared, ipsub_, 
             p2p_pub_bindhosts = DEFAULT_P2P_BINDHOSTS, 
@@ -129,7 +137,8 @@ class CoherenceManager(object):
             quick_refresh = False,
             stable_hash = stable_hash,
             value_pickler = None,
-            max_pending = 10240):
+            max_pending = 10240,
+            ioloop = None):
         """
         Params
             namespace: A namespace that will use to identify events in subscription
@@ -172,12 +181,16 @@ class CoherenceManager(object):
                 notifications within a task timeout period, and that could eat all
                 your node's RAM rather quickly. This setting avoids OOM conditions,
                 by expiring old pending entries as the list reaches this limit.
+
+            ioloop: A ZMQIOLoop to be used for asynchronous tasks. If not given,
+                asynchronous callbacks won't happen asynchronously.
         """
         assert value_pickler or shared
         
         self.private = private
         self.shared = shared
         self.ipsub = ipsub_
+        self.ioloop = ioloop
         self.local = threading.local()
         self.namespace = namespace
         self.synchronous = synchronous
@@ -645,8 +658,8 @@ class CoherenceManager(object):
                 timeout = timeout)
         return NoopWaiter()
 
-    @_swallow_connrefused(_noop)
-    def wait_done(self, key, poll_interval = 1000, timeout = None):
+    @_swallow_connrefused(_noop_with_callback)
+    def wait_done(self, key, poll_interval = 1000, timeout = None, callback = None):
         """
         Waits until the given key is removed from pending state.
 
@@ -664,12 +677,17 @@ class CoherenceManager(object):
                 rechecks will be performed in this interval.
             timeout: maximum time to wait (in ms). If not None, 
                 the method's return value must be checked for success.
+            callback: if given, instead of blocking for a result, the callback
+                will be invoked with it when done, asynchronously, and the
+                method will return immediately.
         """
 
         # Check for recent notifications
         recent = self.recent_done.get(key)
         if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
             # don't wait then
+            if callback is not None:
+                callback(True)
             return True
         
         ipsub_ = self.ipsub
@@ -694,39 +712,109 @@ class CoherenceManager(object):
                     return False
                 else:
                     return True
+            def unlisten_all(waiter):
+                if ssignaler is not None:
+                    self._unsub_selfdone(ssignaler)
+                if dsignaler is not None:
+                    ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
+                if asignaler is not None:
+                    ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
+                waiter.close()
             dsignaler = ipsub_.listen_decode(doneprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             asignaler = ipsub_.listen_decode(abortprefix, ipsub.EVENT_INCOMING_UPDATE, signaler)
             ssignaler = lambda key, contact = self.p2p_pub_binds : signaler(None, None, (None, [key], contact))
             self._sub_selfdone(ssignaler)
             success = False
-            while timeout is None or timeout > 0:
-                # Check for recent self-notifications
+
+            if callback is not None and self.ioloop is not None:
+                # First, check for recent self-notifications
                 recent = self.recent_done.get(key)
-                if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
+                if recent is not None and (time.time() - recent) < (poll_interval * 0.002):
                     # don't wait then
                     success = True
-                    break
-                if waiter.poll(min(poll_interval, timeout or poll_interval)):
-                    success = True
-                    break
-                elif timeout is not None:
-                    timeout -= poll_interval
-                # Re-check for recent self-notifications
-                recent = self.recent_done.get(key)
-                if recent is not None and (time.time() - recent) < (poll_interval * 1.01):
-                    # don't wait then
-                    success = True
-                    break
-                # Request confirmation of pending status
-                if not self.query_pending(key, lambda:1, poll_interval, False):
-                    success = True
-                    break
+                else:
+                    # Ok, go for it asynchronously
+                    running = [waiter]
+                    ioloop = self.ioloop
+                    waiter_stream = ZMQStream(waiter, ioloop)
+
+                    def abort(send_abort = True):
+                        if running:
+                            # Do an atomic waiter grab, and recheck that it was still running
+                            waiter = running.pop()
+                            if waiter is not None:
+                                waiter_stream.stop_on_recv()
+                                unlisten_all(waiter)
+                                if timeout_handle is not None:
+                                    ioloop.remove_timeout(timeout_handle)
+                                periodic_check.stop()
+                                if send_abort:
+                                    callback(False)
+
+                    def done(msg):
+                        if running:
+                            abort(False)
+                            callback(True)
+
+                    recent_done = self.recent_done
+                    always_expired = lambda:1
+                    def do_periodic_check():
+                        if not running:
+                            periodic_check.stop()
+
+                        # Re-check for recent self-notifications
+                        recent = recent_done.get(key)
+                        if recent is not None and (time.time() - recent) < (poll_interval * 0.004):
+                            abort(False)
+                            callback(True)
+
+                        # Request confirmation of pending status
+                        if not self.query_pending(key, always_expired, poll_interval, False):
+                            abort(False)
+                            callback(True)
+                    periodic_check = PeriodicCallback(do_periodic_check,
+                        min(poll_interval, timeout or poll_interval),
+                        ioloop)
+
+                    if timeout is not None:
+                        timeout_handle = ioloop.add_timeout(ioloop.time() + timeout * 0.001, abort)
+                    else:
+                        timeout_handle = None
+
+                    # Wakes the ioloop as a side effect, and makes timeouts start ticking
+                    def start_callbacks():
+                        waiter_stream.on_recv(done)
+                        periodic_check.start()
+                    ioloop.add_callback(start_callbacks)
+
+                    # All set up, dereference waiter to make sure sockets aren't destroyed on exit
+                    waiter = None
+            else:
+                while timeout is None or timeout > 0:
+                    # Check for recent self-notifications
+                    recent = self.recent_done.get(key)
+                    if recent is not None and (time.time() - recent) < (poll_interval * 0.002):
+                        # don't wait then
+                        success = True
+                        break
+                    if waiter.poll(min(poll_interval, timeout or poll_interval)):
+                        success = True
+                        break
+                    elif timeout is not None:
+                        timeout -= poll_interval
+                    # Re-check for recent self-notifications
+                    recent = self.recent_done.get(key)
+                    if recent is not None and (time.time() - recent) < (poll_interval * 0.002):
+                        # don't wait then
+                        success = True
+                        break
+                    # Request confirmation of pending status
+                    if not self.query_pending(key, lambda:1, poll_interval, False):
+                        success = True
+                        break
         finally:
-            if ssignaler is not None:
-                self._unsub_selfdone(ssignaler)
-            if dsignaler is not None:
-                ipsub_.unlisten(doneprefix, ipsub.EVENT_INCOMING_UPDATE, dsignaler)
-            if asignaler is not None:
-                ipsub_.unlisten(abortprefix, ipsub.EVENT_INCOMING_UPDATE, asignaler)
-            waiter.close()
+            if waiter is not None:
+                unlisten_all(waiter)
+        if callback is not None and waiter is not None:
+            callback(success)
         return success

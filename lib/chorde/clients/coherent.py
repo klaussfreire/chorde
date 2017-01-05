@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 import time
 import logging
+import sys
 
-from .async import Defer, REGET, CancelledError
+from .async import Defer, REGET, AWAIT, CancelledError, Future
 from .base import BaseCacheClient, NONE
 
 from chorde.mq import coherence
+
+class Return(Exception):
+    def __init__(self, value):
+        self.value = value
 
 class CoherentDefer(Defer):
     """
@@ -52,17 +57,20 @@ class CoherentDefer(Defer):
         self.wait_time = kwargs.pop('wait_time', 0)
         self.computed = False
         self.aborted = False
+        self.coherence_state = None
+        self.coherence_result = None
+        self.coherence_exc = None
         super(CoherentDefer, self).__init__(callable_, *args, **kwargs)
 
-    def undefer(self):
+    def run_coherence_protocol(self):
         logger = logging.getLogger('chorde.coherence')
         while True:
             if not self.expired():
                 logger.debug("Not computing because already fresh, key=%r", self.key)
                 if hasattr(self, 'future'):
-                    return REGET
+                    raise Return(REGET)
                 else:
-                    return NONE
+                    raise Return(NONE)
             else:
                 computer = self.manager.query_pending(self.key, self.expired, self.timeout, True)
                 if computer is None:
@@ -80,22 +88,28 @@ class CoherentDefer(Defer):
                         logger.debug("Computing aborted on key=%r due to exception", self.key, exc_info=True)
                         self.aborted = True
                         raise
-                    return rv
+                    raise Return(rv)
                 elif computer is coherence.OOB_UPDATE and not self.expired():
                     # Skip, tiered caches will read it from the shared cache and push it downstream
                     logger.debug("Fresh value available OOB on key=%r", self.key)
                     if hasattr(self, 'future'):
-                        return REGET
+                        raise Return(REGET)
                     else:
-                        return NONE
+                        raise Return(NONE)
                 elif self.wait_time != 0:
                     logger.debug("Waiting for computation on node %r on key=%r", computer, self.key)
-                    if self.manager.wait_done(self.key, timeout = self.wait_time):
+                    future = Future()
+                    self.manager.wait_done(self.key, timeout = self.wait_time, callback = future.set)
+                    if future.done():
+                        done = future.result()
+                    else:
+                        done = yield future
+                    if done:
                         logger.debug("Computation done (was waiting on node %r) on key=%r", computer, self.key)
                         if hasattr(self, 'future'):
-                            return REGET
+                            raise Return(REGET)
                         else:
-                            return NONE
+                            raise Return(NONE)
                     else:
                         # retry
                         logger.debug("Computation still in progress (waiting on node %r) on key=%r", computer, self.key)
@@ -106,7 +120,41 @@ class CoherentDefer(Defer):
                         # Must cancel it if we're not going to wait
                         self.future.cancel()
                         self.future.set_exception(CancelledError())
-                    return NONE
+                    raise Return(NONE)
+
+    def register_result(self, future):
+        try:
+            self.coherence_result = future.result()
+            self.coherence_exc = None
+        except:
+            self.coherence_result = None
+            self.coherence_exc = sys.exc_info()
+
+    def undefer(self):
+        if self.coherence_state is None:
+            self.coherence_state = coherence_state = self.run_coherence_protocol()
+        else:
+            coherence_state = self.coherence_state
+
+        try:
+            coherence_exc = self.coherence_exc
+            if coherence_exc is None:
+                coherence_result = self.coherence_result
+                self.coherence_result = None
+                if coherence_result is None:
+                    yielded = next(coherence_state)
+                else:
+                    yielded = coherence_state.send(coherence_result)
+            else:
+                self.coherence_exc = None
+                yielded = coherence_state.throw(*coherence_exc)
+        except Return as yielded:
+            self.coherence_state = None
+            return yielded.value
+
+        # If not a Return, it will yield a future
+        yielded.add_done_callback(self.register_result)
+        return AWAIT(yielded, self)
 
     def done(self):
         if self.computed:

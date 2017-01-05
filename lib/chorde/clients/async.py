@@ -27,6 +27,11 @@ class _PURGE:pass
 class _CLEAR:pass
 class _RENEW:pass
 class REGET:pass
+class ACHECK:pass
+class AWAIT:
+    def __init__(self, future, defer):
+        self.future = future
+        self.defer = defer
 
 COALESCE_IGNORE_KWARGS = frozenset(['promote_callback'])
 SPECIAL = set(map(id,[_NONE, _DELETE, _EXPIRE, _PURGE, _CLEAR, _RENEW, REGET]))
@@ -126,6 +131,8 @@ class AsyncCacheWriterPool:
         # high-load environments
         self.queueset = {}
         self.workset = {}
+        self.awaitset = {}
+        self.adoneset = {}
         self.threadset = set()
         self.done_event = threading.Event()
         self.overflow = overflow
@@ -158,11 +165,45 @@ class AsyncCacheWriterPool:
         return self._writer_threadpool
 
     @staticmethod
-    def _writer(self, key, reentrant = True):
+    def _acheck(self):
         # self is weakref
+        wself = self
+        self = self()
+
+        adoneset = self.adoneset
+        adonesetpop = adoneset.pop
+        next_ = next
+        iter_ = iter
+        if adoneset:
+            while adoneset:
+                try:
+                    taskid = next_(iter_(adoneset))
+                except StopIteration:
+                    break
+                except RuntimeError:
+                    continue
+
+                await = adonesetpop(taskid, None)
+                if await is None:
+                    continue
+
+                # Resume task
+                key = await.key
+                self.thread_attach(key)
+                self._writer(wself, key, True, False, (await.defer, await.ttl, await.kw))
+
+    @staticmethod
+    def _writer(self, key, reentrant = True, asyncheck = True, value = None):
+        # self is weakref
+        wself = self
         self = self()
         if self is None:
             return
+
+        if asyncheck and reentrant:
+            # Can only do async checks on reentrant calls
+            if ACHECK in self.queueset:
+                self._acheck(wself)
 
         if reentrant:
             thread_id = thread.get_ident()
@@ -173,9 +214,11 @@ class AsyncCacheWriterPool:
         else:
             thread_id = None
 
+        is_detached = False
         ev = self.done_event
         deferred = _NONE
-        value = self.dequeue(key)
+        if value is None:
+            value = self.dequeue(key)
         try:
             if value is _NONE or value is NONE:
                 # Cancelled
@@ -206,7 +249,24 @@ class AsyncCacheWriterPool:
                 if deferred is not _NONE:
                     deferred.done()
                 return
-                
+
+            elif isinstance(value, AWAIT):
+                # we'll have to wait for an event to go on computing this key
+                # detach the current thread from this task while we wait.
+                # We'll use the value's id() as task id
+                # In order to resume, we'll ask the future to schedule an ACHECK when done,
+                # but to put these checks ahead of the queue, all tasks will first check the
+                # async queue, so by the time we get to the ACHECK we may already have dispatched
+                # the task
+                value.key = key
+                value.ttl = ttl
+                value.kw = kw
+                value.future.add_done_callback(lambda f, c=self._enqueue_acheck : c())
+                taskid = id(value)
+                self.awaitset[taskid] = value
+                self.thread_detach(key)
+                is_detached = True
+
             elif value is _DELETE:
                 try:
                     self.client.delete(key)
@@ -236,7 +296,7 @@ class AsyncCacheWriterPool:
                     self.client.purge()
                 except:
                     self.logger.error("Error purging cache", exc_info = True)
-            
+
             else:
                 try:
                     self.client.put(key, value, ttl, **(kw or {}))
@@ -246,13 +306,17 @@ class AsyncCacheWriterPool:
             if deferred is not _NONE:
                 deferred.done()
         finally:
-            # Signal waiting threads
-            w = self.workset.pop(key, None)
-            if w is not None:
-                kev = w[2]
-            else:
+            if is_detached:
+                # Task is awaiting, don't signal waiting thread just yet
                 kev = None
-            del w
+            else:
+                # Signal waiting threads
+                w = self.workset.pop(key, None)
+                if w is not None:
+                    kev = w[2]
+                else:
+                    kev = None
+                del w
             
             if thread_id is not None and thread_id not in map(operator.itemgetter(0), self.workset.values()):
                 try:
@@ -292,6 +356,19 @@ class AsyncCacheWriterPool:
         self.workset[key] = thread.get_ident(), rv, threading.Event()
         return rv
 
+    def thread_detach(self, key):
+        workset = self.workset
+        tid, rv, ev = workset[key]
+        workset[key] = (0, rv, ev)
+
+    def thread_attach(self, key):
+        workset = self.workset
+        tid, rv, ev = workset[key]
+        workset[key] = (thread.get_ident(), rv, ev)
+
+    def on_async_done(self, async_task_id):
+        self.adoneset[async_task_id] = self.awaitset.pop(async_task_id)
+
     @serialize
     def drop_one(self):
         for key in self.queueset:
@@ -300,6 +377,14 @@ class AsyncCacheWriterPool:
             return
         rv = self.queueset.pop(key, _NONE)
         return rv
+
+    def _enqueue_acheck(self):
+        # No need for perfect thread safety, the ACHECK key is just a signal
+        queueset = self.queueset
+        if ACHECK not in queueset:
+            queueset[ACHECK] = None
+            threadpool = self.defer_threadpool
+            threadpool.apply_async(self._acheck, (self._wself,))
 
     def enqueue(self, key, value, ttl=None, **kw):
         if (thread.get_ident() in self.threadset 

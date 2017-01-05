@@ -670,12 +670,12 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
                 break
         time.sleep(0.1)
 
-    def setUp(self):
+    def setUp(self, **kwargs):
         super(CoherentCachedDecoratorTest, self).setUp()
         self.decorator = functools.partial(coherent_cached, self.private, 
-                self.shared, self.ipsub)
+                self.shared, self.ipsub, **kwargs)
         self.decorator2 = functools.partial(coherent_cached, self.private2, 
-                self.shared, self.ipsub2)
+                self.shared, self.ipsub2, **kwargs)
         self.tiered_decorator = self.decorator2
 
     @classmethod
@@ -785,3 +785,22 @@ class CoherentCachedDecoratorTest(CachedDecoratorTest):
         self.assertEquals(get_number(), val+2)
         self.assertEquals(get_number.client.get(get_number.callkey()), val+2)
         self.assertEquals(self.shared.get(get_number.callkey()), val)
+
+@skipIfUnsupported
+class AsyncCoherentCachedDecoratorTest(CoherentCachedDecoratorTest):
+    @classmethod
+    def setUpClass(cls):
+        super(AsyncCoherentCachedDecoratorTest, cls).setUpClass()
+        cls.ioloop = zmq.eventloop.ioloop.ZMQIOLoop()
+        cls.ioloop_thread = threading.Thread(target = cls.ioloop.start)
+        cls.ioloop_thread.daemon = True
+        cls.ioloop_thread.start()
+
+    def setUp(self):
+        super(AsyncCoherentCachedDecoratorTest, self).setUp(ioloop = self.ioloop)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ioloop.add_callback(cls.ioloop.close)
+        cls.ioloop_thread.join(5)
+        super(AsyncCoherentCachedDecoratorTest, cls).tearDownClass()

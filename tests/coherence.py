@@ -84,6 +84,19 @@ class CoherenceProtocolTest(unittest.TestCase):
         time.sleep(0.1)
         self.assertTrue(not self.private2.contains(1))
 
+    def do_wait_done(self, coherence, key):
+        if self.ioloop is None:
+            return coherence.wait_done(key)
+        else:
+            rv = []
+            ev = threading.Event()
+            def callback(v):
+                rv.append(v)
+                ev.set()
+            coherence.wait_done(key, callback = callback)
+            ev.wait()
+            return rv[0] if rv else False
+
     def test_pendq(self):
         t1 = time.time()
         pending = self.coherence.query_pending(1, lambda:1)
@@ -122,7 +135,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t = threading.Thread(target=mark)
         t.deamon = True
         t.start()
-        self.coherence.wait_done(1)
+        self.do_wait_done(self.coherence, 1)
 
         time.sleep(0.1)
 
@@ -157,7 +170,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         t = threading.Thread(target=mark)
         t.deamon = True
         t.start()
-        self.coherence2.wait_done(1)
+        self.do_wait_done(self.coherence2, 1)
 
         t1 = time.time()
         pending = self.coherence2.query_pending(1, lambda:1, optimistic_lock = True)
@@ -190,7 +203,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.ipsub2_thread.join(5.0)
 
         t1 = time.time()
-        waiter = threading.Thread(target=self.coherence.wait_done, args=(1,))
+        waiter = threading.Thread(target=self.do_wait_done, args=(self.coherence, 1,))
         waiter.daemon = True
         waiter.start()
         waiter.join(3*coherence.PENDING_TIMEOUT)
@@ -216,7 +229,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
 
         t1 = time.time()
-        waiter = threading.Thread(target=self.coherence.wait_done, args=(1,))
+        waiter = threading.Thread(target=self.do_wait_done, args=(self.coherence, 1,))
         waiter.daemon = True
         waiter.start()
 
@@ -247,7 +260,7 @@ class CoherenceProtocolTest(unittest.TestCase):
         self.assertTrue(1 not in self.coherence.pending) # Not locally pending
 
         t1 = time.time()
-        waiter = threading.Thread(target=self.coherence.wait_done, args=(1,))
+        waiter = threading.Thread(target=self.do_wait_done, args=(self.coherence, 1,))
         waiter.daemon = True
         waiter.start()
         waiter.join(3*coherence.PENDING_TIMEOUT)
@@ -287,4 +300,17 @@ class CoherenceProtocolTest(unittest.TestCase):
 class CoherenceQuickProtocolTest(CoherenceProtocolTest):
     coherence_kwargs = {'quick_refresh':True}
 
+@skipIfUnsupported
+class CoherenceAsyncProtocolTest(CoherenceProtocolTest):
+    @classmethod
+    def setUpClass(cls):
+        cls.ioloop = zmq.eventloop.ioloop.ZMQIOLoop()
+        cls.ioloop_thread = threading.Thread(target = cls.ioloop.start)
+        cls.ioloop_thread.daemon = True
+        cls.ioloop_thread.start()
+        cls.coherence_kwargs = {'ioloop' : cls.ioloop}
 
+    @classmethod
+    def tearDownClass(cls):
+        cls.ioloop.add_callback(cls.ioloop.close)
+        cls.ioloop_thread.join(5)
