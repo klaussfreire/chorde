@@ -11,9 +11,11 @@ import weakref
 import zlib
 import socket
 import select
-from threading import Event, Thread, Lock
+from threading import Event, Thread, Lock, local
+from thread import get_ident
 
 from .base import BaseCacheClient, CacheMissError, NONE
+from .async import Future
 from .inproc import Cache
 
 _RENEW = object()
@@ -319,6 +321,69 @@ class MemcachedStoreClient(memcache.Client):
                             state[1] = buffer_(buf, sent)
             return unsent
 
+        def _expect_multi(self, what, sockets, fail_callback, dead_callback, mark_dead = True):
+            if not sockets:
+                return
+
+            socket_timeout = max([server.socket_timeout for server, pending_keys in sockets.itervalues()]) * 1000
+            fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
+            POLLIN = select.POLLIN
+            POLLERR = select.POLLERR | select.POLLNVAL | select.POLLHUP
+            poller = select.poll()
+            for sock in sockets:
+                poller.register(sock, POLLIN|POLLERR)
+            max_blocking_buffer = 4096
+            while sockets:
+                xlist = poller.poll(socket_timeout)
+                elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
+                rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
+                if elist:
+                    for sock in elist:
+                        server, pending_keys = sockets[sock]
+                        if mark_dead:
+                            server.mark_dead("connection reset by peer")
+                        sockets.pop(sock)
+                        poller.unregister(sock)
+                        if dead_callback is not None:
+                            dead_callback(server, pending_keys)
+                elif not rlist:
+                    # No error, no ready socket, means timeout
+                    if mark_dead:
+                        for sock in sockets:
+                            sockets[sock][0].mark_dead("timeout")
+                    if dead_callback is not None:
+                        for sock, (server, pending_keys) in sockets.iteritems():
+                            dead_callback(server, pending_keys)
+                    break
+                for sock in rlist:
+                    state = sockets[sock]
+                    server, pending_keys = state
+                    try:
+                        while 1:
+                            line = server.readline()
+                            if line == what:
+                                state[1] -= 1
+                                if state[1] <= 0:
+                                    sockets.pop(sock)
+                                    poller.unregister(sock)
+                                    break
+                            elif fail_callback is not None:
+                                pending_keys = state[1]
+                                fail_callback(server, pending_keys)
+                            # Go on unless there's no more lines to read
+                            if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                break
+                    except (memcache._Error, socket.error), msg:
+                        if isinstance(msg, tuple):
+                            msg = msg[1]
+                        if mark_dead:
+                            server.mark_dead(msg)
+                        if dead_callback is not None:
+                            pending_keys = state[1]
+                            dead_callback(server, pending_keys)
+                        sockets.pop(sock)
+                        poller.unregister(sock)
+
         def get_multi(self, keys, key_prefix=''):
             '''
             Retrieves multiple keys from the memcache doing just one query.
@@ -430,135 +495,6 @@ class MemcachedStoreClient(memcache.Client):
                             sockets.pop(sock)
                             poller.unregister(sock)
             return retvals
-    
-        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
-            '''
-            Sets multiple keys in the memcache doing just one query.
-    
-            >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
-            >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
-            1
-    
-    
-            This method is recommended over regular L{set} as it lowers the number of
-            total packets flying around your network, reducing total latency, since
-            your app doesn't have to wait for each round-trip of L{set} before sending
-            the next one.
-    
-            @param mapping: A dict of key/value pairs to set.
-            @param time: Tells memcached the time which this value should expire, either
-            as a delta number of seconds, or an absolute unix time-since-the-epoch
-            value. See the memcached protocol docs section "Storage Commands"
-            for more info on <exptime>. We default to 0 == cache forever.
-            @param key_prefix:  Optional string to prepend to each key when sending to memcache. Allows you to efficiently stuff these keys into a pseudo-namespace in memcache:
-                >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'}, key_prefix='subspace_')
-                >>> len(notset_keys) == 0
-                True
-                >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
-                True
-    
-                Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
-                In this case, the return result would be the list of notset original keys, prefix not applied.
-    
-            @param min_compress_len: The threshold length to kick in auto-compression
-            of the value using the zlib.compress() routine. If the value being cached is
-            a string, then the length of the string is measured, else if the value is an
-            object, then the length of the pickle result is measured. If the resulting
-            attempt at compression yeilds a larger string than the input, then it is
-            discarded. For backwards compatability, this parameter defaults to 0,
-            indicating don't ever try to compress.
-            @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
-            @rtype: list
-    
-            '''
-    
-            self._statlog('set_multi')
-    
-            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
-    
-            # send out all requests on each server before reading anything
-            notstored = [] # original keys.
-    
-            server_commands = {}
-            for server in server_keys.iterkeys():
-                bigcmd = []
-                write = bigcmd.append
-                for key in server_keys[server]: # These are mangled keys
-                    store_info = self._val_to_store_info(
-                            mapping[prefixed_to_orig_key[key]],
-                            min_compress_len)
-                    if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
-                                time, store_info[1], store_info[2]))
-                    else:
-                        notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
-            unsent = self._send_multi(server_commands)
-            dead_servers = unsent.keys()
-            del unsent, server_commands
-    
-            # if any servers died on the way, don't expect them to respond.
-            for server in dead_servers:
-                del server_keys[server]
-    
-            #  short-circuit if there are no servers, just return all keys
-            if not server_keys: return(mapping.keys())
-    
-            # wait for all confirmations
-            sockets = {
-                server.socket : [server, len(keys)]
-                for server, keys in server_keys.iteritems()
-            }
-            if sockets:
-                socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
-                fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
-                POLLIN = select.POLLIN
-                POLLERR = select.POLLERR | select.POLLNVAL | select.POLLHUP
-                poller = select.poll()
-                for sock in sockets:
-                    poller.register(sock, POLLIN|POLLERR)
-                max_blocking_buffer = 4096
-                while sockets:
-                    xlist = poller.poll(socket_timeout)
-                    elist = [ fdmap(sock) for sock,flags in xlist if flags & POLLERR ]
-                    rlist = [ fdmap(sock) for sock,flags in xlist if flags & POLLIN ]
-                    if elist:
-                        for sock in elist:
-                            server, pending_keys = sockets[sock]
-                            server.mark_dead("connection reset by peer")
-                            sockets.pop(sock)
-                            poller.unregister(sock)
-                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
-                    elif not rlist:
-                        # No error, no ready socket, means timeout
-                        for sock in sockets:
-                            sockets[sock][0].mark_dead("timeout")
-                        for sock, (server, pending_keys) in sockets.iteritems():
-                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
-                        break
-                    for sock in rlist:
-                        state = sockets[sock]
-                        server, pending_keys = state
-                        try:
-                            while 1:
-                                line = server.readline()
-                                if line == 'STORED':
-                                    state[1] -= 1
-                                    if state[1] <= 0:
-                                        sockets.pop(sock)
-                                        poller.unregister(sock)
-                                        break
-                                # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
-                                    break
-                        except (memcache._Error, socket.error), msg:
-                            if isinstance(msg, tuple): msg = msg[1]
-                            server.mark_dead(msg)
-                            pending_keys = state[1]
-                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
-                            sockets.pop(sock)
-                            poller.unregister(sock)
-            return notstored
 
     else:
         # fall back to select
@@ -613,6 +549,65 @@ class MemcachedStoreClient(memcache.Client):
                         unsent[server] = buf
                 del pops[:]
             return unsent
+
+        def _expect_multi(self, what, sockets, fail_callback, dead_callback, mark_dead = True):
+            """
+            Parameters:
+                what: what line to expect
+
+                sockets: mapping { socket : [server, num_pending_lines] }, will be mutated while working
+
+                fail_callback: when a line doesn't match the expectation, fail_callback will be called
+                    with (server, num_pending_lines) as argument. So the first failure will be num_pending_lines,
+                    the second num_pending_lines-1, and so on
+
+                dead_callback: when a server dies, dead_callback will be called with (server, num_pending_lines) as
+                    argument, and no further failures will be reported for that server.
+
+                mark_dead: whether to mark failed servers as dead. Defaults to True.
+            """
+            if not sockets:
+                return
+
+            socket_timeout = max([server.socket_timeout for server, pending_keys in sockets.itervalues()])
+            select_ = select.select
+            max_blocking_buffer = 4096
+            while sockets:
+                rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
+                if not rlist:
+                    if mark_dead:
+                        for sock in sockets:
+                            sockets[sock][0].mark_dead("timeout")
+                    if dead_callback is not None:
+                        for sock, (server, pending_keys) in sockets.iteritems():
+                            dead_callback(server, pending_keys)
+                    break
+                for sock in rlist:
+                    state = sockets[sock]
+                    server, pending_keys = state
+                    try:
+                        while 1:
+                            line = server.readline()
+                            if line == what:
+                                state[1] -= 1
+                                if state[1] <= 0:
+                                    sockets.pop(sock)
+                                    break
+                            elif fail_callback is not None:
+                                pending_keys = state[1]
+                                fail_callback(socket, pending_keys)
+                            # Go on unless there's no more lines to read
+                            if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                break
+                    except (memcache._Error, socket.error), msg:
+                        if isinstance(msg, tuple):
+                            msg = msg[1]
+                        if mark_dead:
+                            server.mark_dead(msg)
+                        if dead_callback is not None:
+                            pending_keys = state[1]
+                            dead_callback(server, pending_keys)
+                        sockets.pop(sock)
 
         def get_multi(self, keys, key_prefix=''):  # lint:ok
             '''
@@ -710,119 +705,442 @@ class MemcachedStoreClient(memcache.Client):
                             server.mark_dead(msg)
                             sockets.pop(sock)
             return retvals
-    
-        def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):  # lint:ok
-            '''
-            Sets multiple keys in the memcache doing just one query.
-    
-            >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
-            >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
-            1
-    
-    
-            This method is recommended over regular L{set} as it lowers the number of
-            total packets flying around your network, reducing total latency, since
-            your app doesn't have to wait for each round-trip of L{set} before sending
-            the next one.
-    
-            @param mapping: A dict of key/value pairs to set.
-            @param time: Tells memcached the time which this value should expire, either
-            as a delta number of seconds, or an absolute unix time-since-the-epoch
-            value. See the memcached protocol docs section "Storage Commands"
-            for more info on <exptime>. We default to 0 == cache forever.
-            @param key_prefix:  Optional string to prepend to each key when sending to memcache. Allows you to efficiently stuff these keys into a pseudo-namespace in memcache:
-                >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'}, key_prefix='subspace_')
-                >>> len(notset_keys) == 0
-                True
-                >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
-                True
-    
-                Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
-                In this case, the return result would be the list of notset original keys, prefix not applied.
-    
-            @param min_compress_len: The threshold length to kick in auto-compression
-            of the value using the zlib.compress() routine. If the value being cached is
-            a string, then the length of the string is measured, else if the value is an
-            object, then the length of the pickle result is measured. If the resulting
-            attempt at compression yeilds a larger string than the input, then it is
-            discarded. For backwards compatability, this parameter defaults to 0,
-            indicating don't ever try to compress.
-            @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
-            @rtype: list
-    
-            '''
-    
-            self._statlog('set_multi')
-    
-            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
-    
-            # send out all requests on each server before reading anything
-            notstored = [] # original keys.
-    
-            server_commands = {}
-            for server in server_keys.iterkeys():
-                bigcmd = []
-                write = bigcmd.append
+
+    def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0):
+        '''
+        Sets multiple keys in the memcache doing just one query.
+
+        >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
+        >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
+        1
+
+
+        This method is recommended over regular L{set} as it lowers the number of
+        total packets flying around your network, reducing total latency, since
+        your app doesn't have to wait for each round-trip of L{set} before sending
+        the next one.
+
+        @param mapping: A dict of key/value pairs to set.
+        @param time: Tells memcached the time which this value should expire, either
+        as a delta number of seconds, or an absolute unix time-since-the-epoch
+        value. See the memcached protocol docs section "Storage Commands"
+        for more info on <exptime>. We default to 0 == cache forever.
+        @param key_prefix:  Optional string to prepend to each key when sending to memcache. Allows you to efficiently stuff these keys into a pseudo-namespace in memcache:
+            >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'}, key_prefix='subspace_')
+            >>> len(notset_keys) == 0
+            True
+            >>> mc.get_multi(['subspace_key1', 'subspace_key2']) == {'subspace_key1' : 'val1', 'subspace_key2' : 'val2'}
+            True
+
+            Causes key 'subspace_key1' and 'subspace_key2' to be set. Useful in conjunction with a higher-level layer which applies namespaces to data in memcache.
+            In this case, the return result would be the list of notset original keys, prefix not applied.
+
+        @param min_compress_len: The threshold length to kick in auto-compression
+        of the value using the zlib.compress() routine. If the value being cached is
+        a string, then the length of the string is measured, else if the value is an
+        object, then the length of the pickle result is measured. If the resulting
+        attempt at compression yeilds a larger string than the input, then it is
+        discarded. For backwards compatability, this parameter defaults to 0,
+        indicating don't ever try to compress.
+        @return: List of keys which failed to be stored [ memcache out of memory, etc. ].
+        @rtype: list
+
+        '''
+
+        self._statlog('set_multi')
+
+        server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+
+        # send out all requests on each server before reading anything
+        notstored = [] # original keys.
+
+        server_commands = {}
+        for server in server_keys.iterkeys():
+            bigcmd = []
+            write = bigcmd.append
+            for key in server_keys[server]: # These are mangled keys
+                store_info = self._val_to_store_info(
+                        mapping[prefixed_to_orig_key[key]],
+                        min_compress_len)
+                if store_info:
+                    write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
+                            time, store_info[1], store_info[2]))
+                else:
+                    notstored.append(prefixed_to_orig_key[key])
+            server_commands[server] = ''.join(bigcmd)
+        unsent = self._send_multi(server_commands)
+        dead_servers = unsent.keys()
+        del unsent, server_commands
+
+        # if any servers died on the way, don't expect them to respond.
+        for server in dead_servers:
+            del server_keys[server]
+
+        #  short-circuit if there are no servers, just return all keys
+        if not server_keys: return(mapping.keys())
+
+        # wait for all confirmations
+        sockets = {
+            server.socket : [server, len(keys)]
+            for server, keys in server_keys.iteritems()
+        }
+        def dead_callback(server, pending_keys):
+            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
+        def fail_callback(server, pending_keys):
+            notstored.append(prefixed_to_orig_key[server_keys[server][-pending_keys]])
+        self._expect_multi('STORED', sockets, fail_callback, dead_callback)
+        return notstored
+
+    def delete_multi(self, mapping, time=0, key_prefix=''):
+        '''
+        Delete multiple keys in the memcache doing just one query.
+
+        >>> notset_keys = mc.set_multi({'key1' : 'val1', 'key2' : 'val2'})
+        >>> mc.get_multi(['key1', 'key2']) == {'key1' : 'val1', 'key2' : 'val2'}
+        1
+        >>> mc.delete_multi(['key1', 'key2'])
+        1
+        >>> mc.get_multi(['key1', 'key2']) == {}
+        1
+
+
+        This method is recommended over iterated regular L{delete}s as it reduces total latency, since
+        your app doesn't have to wait for each round-trip of L{delete} before sending
+        the next one.
+
+        @param keys: An iterable of keys to clear
+        @param time: number of seconds any subsequent set / update commands should fail. Defaults to 0 for no delay.
+        @param key_prefix:  Optional string to prepend to each key when sending to memcache.
+            See docs for L{get_multi} and L{set_multi}.
+
+        @return: 1 if no failure in communication with any memcacheds.
+        @rtype: int
+
+        '''
+
+        self._statlog('delete_multi')
+
+        server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+        del prefixed_to_orig_key
+
+        # send out all requests on each server before reading anything
+        rc = [1]
+
+        server_commands = {}
+        for server in server_keys.iterkeys():
+            bigcmd = []
+            write = bigcmd.append
+            if time != None:
                 for key in server_keys[server]: # These are mangled keys
-                    store_info = self._val_to_store_info(
-                            mapping[prefixed_to_orig_key[key]],
-                            min_compress_len)
-                    if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
-                                time, store_info[1], store_info[2]))
-                    else:
-                        notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
-            unsent = self._send_multi(server_commands)
-            dead_servers = unsent.keys()
-            del unsent, server_commands
-    
-            # if any servers died on the way, don't expect them to respond.
+                    write("delete %s %d\r\n" % (key, time))
+            else:
+                for key in server_keys[server]: # These are mangled keys
+                    write("delete %s\r\n" % key)
+            server_commands[server] = ''.join(bigcmd)
+        unsent = self._send_multi(server_commands)
+        dead_servers = unsent.keys()
+        del unsent, server_commands
+
+        # if any servers died on the way, don't expect them to respond.
+        if dead_servers:
+            rc[0] = 0
             for server in dead_servers:
                 del server_keys[server]
-    
-            #  short-circuit if there are no servers, just return all keys
-            if not server_keys: return(mapping.keys())
-    
-            # wait for all confirmations
-            sockets = {
-                server.socket : [server, len(keys)]
-                for server, keys in server_keys.iteritems()
-            }
-            if sockets:
-                socket_timeout = max([server.socket_timeout for server in server_keys])
-                select_ = select.select
-                max_blocking_buffer = 4096
-                while sockets:
-                    rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
-                    if not rlist:
-                        for sock in sockets:
-                            sockets[sock][0].mark_dead("timeout")
-                        for sock, (server, pending_keys) in sockets.iteritems():
-                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
-                        break
-                    for sock in rlist:
-                        state = sockets[sock]
-                        server, pending_keys = state
-                        try:
-                            while 1:
-                                line = server.readline()
-                                if line == 'STORED':
-                                    state[1] -= 1
-                                    if state[1] <= 0:
-                                        sockets.pop(sock)
-                                        break
-                                # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
-                                    break
-                        except (memcache._Error, socket.error), msg:
-                            if isinstance(msg, tuple): msg = msg[1]
-                            server.mark_dead(msg)
-                            pending_keys = state[1]
-                            notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
-                            sockets.pop(sock)
-            return notstored
 
+        #  short-circuit if there are no servers, just return failure
+        if not server_keys:
+            return 0
+
+        # wait for all confirmations
+        sockets = {
+            server.socket : [server, len(keys)]
+            for server, keys in server_keys.iteritems()
+        }
+        def fail_callback(server, pending_keys):
+            rc[0] = 0
+        self._expect_multi('DELETED', sockets, fail_callback, fail_callback)
+        return rc[0]
+
+_memcache_store_io_sequence = 1
+class MemcacheStoreIOThread(Thread):
+    def __init__(self, target, *args):
+        global _memcache_store_io_sequence
+        # no need to make atomic huh? just a name...
+        threadno = _memcache_store_io_sequence
+        _memcache_store_io_sequence += 1
+
+        name = 'memcached-store-io-thread-%d' % (threadno,)
+        
+        Thread.__init__(self, target=target, args=args, name=name)
+
+class AsyncMemcachedStoreLocalState(local):
+    def __init__(self):
+        local.__init__(self)
+        self.cas_ids = {}
+
+class AsyncMemcachedStoreClient(object):
+    ClientClass = MemcachedStoreClient
+
+    """
+    Wrapper of MemcachedStoreClient that multiplexes all requests through a single
+    async connection. Reduces connection count to the backend considerably.
+
+    Mostly a drop-in replacement of MemcachedStoreClient, with a few exceptions:
+
+        - delete, delete_multi, set and set_multi won't report failures, they
+          will merely enqueue the operations and report success
+
+        - some operations will be merged into one, resulting in slight, usually
+          inconsequential semantic differences:
+
+              * Delay-enforcing deletes will only enforce the last delay to go
+                into the queue, not all of them.
+
+    Custom params:
+        task_timeout: Defaults to 4x socket_timeout, the time to wait for async
+            tasks to be done. In case the thread somehow dies or blocks (shouldn't,
+            but better safe than sorry) or too many tasks pile up, this constrains
+            response time and provides similar latency guarantees than the regular
+            client.
+
+        poll_timeout: How often, in seconds, the background thread should wait
+            for new tasks. While normally it will be awaken explicitly, bugs happen,
+            and this sets an upper latency bound even in the face of bugs. Defaults
+            to half the socket timeout.
+
+        batch_size: How many tasks to get from the task queues in each loop. Keep
+            it big enough to keep all cache nodes busy, but small enough to avoid
+            big latencies. Defaults to 50.
+    """
+    def __init__(self, *p, **kw):
+        self.task_timeout = kw.pop('task_timeout', kw.get('socket_timeout', 3) * 4)
+        self.poll_timeout = kw.pop('poll_timeout', kw.get('socket_timeout', 3) * 0.5)
+        self.batch_size = kw.pop('batch_size', 50)
+
+        self.client = self.ClientClass(*p, **kw)
+
+        self._callbacks = []
+        self._statqueue = {}
+
+        self._getqueue = {}
+        self._getconfigqueue = {}
+        self._statqueue = {}
+        self._setqueue = {}
+        self._delqueue = {}
+        self._updatequeue = {}
+        self._casqueue = collections.defaultdict(list)
+        self._flush_queues = 0
+
+        self._bgwriter_thread = None
+        self._spawning_lock = Lock()
+        self._tl = self.AsyncMemcachedStoreLocalState()
+
+    def assert_started(self):
+        if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+            with self._spawning_lock:
+                if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+                    if not self._bgwriter_thread or not self._bgwriter_thread.isAlive():
+                        bgwriter_thread = MemcacheStoreIOThread(self._bgwriter, weakref.ref(self))
+                        bgwriter_thread.setDaemon(True)
+                        bgwriter_thread.start()
+                        self._bgwriter_thread = bgwriter_thread
+
+    @property
+    def task_timeout(self):
+        return self.client.socket_timeout * 4
+
+    def _do_async(self, method, *args, **kwargs):
+        f = Future()
+        self._callbacks.append((method, args, kwargs, f))
+        self.assert_started()
+        return f
+
+    def _get(self, key, getqueue, assert_started = True):
+        f = getqueue.get(key)
+        if f is None:
+            f = getqueue.setdefault(key, Future())
+            if assert_started:
+                self.assert_started()
+        return f
+
+    def get(self, key):
+        if key in self._delqueue:
+            return None
+
+        return self._get(key, self._getqueue).result(self.task_timeout)
+
+    def get_config(self, key):
+        return self._get(key, self._getconfigqueue).result(self.task_timeout)
+
+    def gets(self, key):
+        if key in self._delqueue:
+            return None
+
+        rv, cas_state = self._get(key, self._getsqueue).result(self.task_timeout)
+        self._tl.cas_ids.update(cas_state)
+        return rv
+
+    def get_multi(self, keys, key_prefix='',
+            isinstance=isinstance, str=str, tuple=tuple):
+        getqueue = self._getqueue
+        delqueue = self._delqueue
+        fs = []
+        fsappend = fs.append
+        assert_started = 0
+        for k in keys:
+            if key in delqueue:
+                f = Future()
+                f._set_nothreads(None)
+                fsappend(f)
+                continue
+
+            if isinstance_(k, tuple_):
+                k = (k[0], key_prefix + str_(k[1]))
+            else:
+                k = key_prefix + str_(k)
+            f = getqueue.get(key)
+            if f is None:
+                f = getqueue.setdefault(key, Future())
+                assert_started = 1
+            fsappend(f)
+        if assert_started:
+            self.assert_started()
+
+        task_timeout = self.task_timeout
+        return [ f.result(task_timeout) for f in fs ]
+
+    def set(self, key, val, time=0, min_compress_len=0):
+        self._delqueue.pop(key, None)
+        self._setqueue[key] = (val, (time, min_compress_len))
+        self.assert_started()
+
+    def set_multi(self, mapping, time=0, key_prefix='', min_compress_len=0,
+            isinstance=isinstance, str=str, tuple=tuple):
+        setqueue = self._setqueue
+        delqueue = self._delqueue
+        for k,v in mapping:
+            delqueue.pop(key, None)
+            setqueue[key] = (v, (time, min_compress_len))
+        self.assert_started()
+
+    def cas(self, key, val, time=0, min_compress_len=0):
+        cas_state = self._tl.cas_ids
+        f = Future()
+        self._casqueue[key].append((val, time, min_compress_len, cas_state, f))
+        return f.result(self.task_timeout)
+
+    def delete(self, key, time=0):
+        setqueue = self.setqueue
+        delqueue = self.delqueue
+        setqueue.pop(key, None)
+        delqueue[key] = time
+        self.assert_started()
+        return 1
+
+    def delete_multi(self, keys, time=0, key_prefix='',
+            isinstance=isinstance, str=str, tuple=tuple):
+        setqueue = self.setqueue
+        delqueue = self.delqueue
+        for k in keys:
+            if isinstance_(k, tuple_):
+                k = (k[0], key_prefix + str_(k[1]))
+            else:
+                k = key_prefix + str_(k)
+            setqueue.pop(key, None)
+            delqueue[key] = time
+        return 1
+
+    def update_method(method):
+        def update(self, key, val, time=0, min_compress_len=0):
+            f = Future()
+            self._updatequeue[key].append((method, val, time, min_compress_len, f))
+            return f.result(self.task_timeout)
+        update.__name__ = method
+        return update
+
+    append = update_method('append')
+    prepend = update_method('prepend')
+    replace = update_method('replace')
+    add = update_method('add')
+
+    del update_method
+
+    def incr(self, key, delta=1):
+        try:
+            return self._incrdecr(key, delta, self._incrqueue).result(self.task_timeout)
+        except:
+            return None
+
+    def decr(self, key, delta=1):
+        try:
+            return self._incrdecr(key, delta, self._decrqueue).result(self.task_timeout)
+        except:
+            return None
+
+    def _incrdecr(self, key, delta, queue):
+        tid = get_ident()
+        taskbuf = queue.get(key)
+        if taskbuf is None:
+            f = Future()
+            taskbuf = queue.setdefault(key, (f,{}))
+            assert_started = 1
+        else:
+            assert_started = 0
+        f, counts = taskbuf
+        counts[tid] += delta
+        if assert_started:
+            self.assert_started()
+        return f
+
+    def get_stats(self, stat_args):
+        return self._get(('get_stats', stat_args), self._statqueue).result(self.task_timeout)
+
+    def get_slabs(self):
+        return self._get(('get_slabs', None), self._statqueue).result(self.task_timeout)
+
+    def flush_all(self):
+        self._setqueue.clear()
+        self._delqueue.clear()
+        self._flush_queues = 1
+        return self._do_async(self.client.flush_all).result(self.task_timeout)
+
+    def generic_proxy(method):
+        def generic_proxy(self, *p, **kw):
+            return self._do_async(getattr(self.client, method), *p, **kw).result(self.task_timeout)
+        generic_proxy.__name__ = method
+        return generic_proxy
+
+    def check_key(self, *p, **kw):
+        return self.client.check_key(*p, **kw)
+
+    locals().update({
+        method_name : generic_proxy(method_name)
+        for method_name in [
+            'reset_cas',
+            'set_servers',
+            'forget_dead_hosts',
+            'disconnect_all',
+        ]
+    })
+
+    del generic_proxy
+
+    @staticmethod
+    def _bgwriter(wself):
+        while True:
+            self = wself()
+            if self is None:
+                break
+
+            self.workev.wait(self.poll_timeout)
+            workev.clear()
+
+            gotwork = 1
+            while gotwork:
+                if self._flush_queues:
+                    self._flush_queues = 0
+
+                gotwork = 0
 
 class DynamicResolvingMemcachedClient(BaseCacheClient, ThreadLocalDynamicResolvingClient):
     def __init__(self, client_class, client_addresses, client_args):
