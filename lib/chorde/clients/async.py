@@ -10,6 +10,8 @@ import threading
 import operator
 import sys
 
+from chorde.py6 import *
+
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
 # undesirable, pushing pickling cost into foreground threads.

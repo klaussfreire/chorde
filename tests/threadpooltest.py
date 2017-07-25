@@ -6,6 +6,8 @@ import multiprocessing.pool
 import time
 import unittest
 
+from chorde.py6 import *
+
 from chorde.threadpool import ThreadPool
 
 from .base import TestCase

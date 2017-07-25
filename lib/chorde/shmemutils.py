@@ -10,6 +10,8 @@ import tempfile
 import threading
 import operator
 
+from chorde.py6 import *
+
 try:
     import fcntl
 except ImportError:

@@ -9,6 +9,8 @@ import zmq
 import time
 import operator
 
+from chorde.py6 import *
+
 from . import ipsub
 
 try:

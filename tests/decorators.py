@@ -10,6 +10,7 @@ from chorde.clients.tiered import TieredInclusiveClient
 from chorde.clients.async import AsyncWriteCacheClient
 from tests.coherence import skipIfUnsupported, ipsub, zmq
 
+from chorde.py6 import *
 
 class DecoratorTestCase(unittest.TestCase):
     """Base test class"""

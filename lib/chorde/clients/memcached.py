@@ -13,6 +13,8 @@ import socket
 import select
 from threading import Event, Thread, Lock
 
+from chorde.py6 import *
+
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
 

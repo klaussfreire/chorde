@@ -13,6 +13,8 @@ import weakref
 
 import worker
 
+from chorde.py6 import *
+
 class TimeoutError(Exception):
     pass
 class TerminateWorker(Exception):

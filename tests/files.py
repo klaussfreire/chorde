@@ -7,6 +7,8 @@ import mmap
 
 import os.path
 
+from chorde.py6 import *
+
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn
 
 SIZE = 1 << 20

@@ -9,6 +9,8 @@ import thread
 import random
 from abc import ABCMeta, abstractmethod
 
+from chorde.py6 import *
+
 from .base import *
 
 __ALL__ = (

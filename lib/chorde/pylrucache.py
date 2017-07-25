@@ -1,4 +1,5 @@
 """Efficient (O(log n) amortized update) Least-Recently-Used cache"""
+from chorde.py6 import *
 
 CacheMissError = KeyError
 

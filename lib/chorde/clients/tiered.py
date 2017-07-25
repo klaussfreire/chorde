@@ -3,6 +3,8 @@ from itertools import izip, islice
 import operator
 import logging
 
+from chorde.py6 import *
+
 from . import async
 from .base import NONE, CacheMissError, BaseCacheClient
 
