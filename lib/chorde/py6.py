@@ -13,9 +13,16 @@ except NameError:
     xrange = range
 
 try:
-    from functools import izip
+    from functools import izip, imap
+    lzip = zip
+    lmap = map
 except ImportError:
     izip = zip
+    imap = map
+    def lzip(x):
+        return list(zip(x))
+    def lmap(x):
+        return list(map(x))
 
 try:
     callable
