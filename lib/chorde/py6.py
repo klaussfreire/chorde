@@ -24,6 +24,7 @@ except NameError:
 
 try:
     buffer
+    buffertype = buffer
 except NameError:
     def buffer(x, offset=None, size=None):
         x = memoryview(x)
@@ -32,6 +33,7 @@ except NameError:
         if size is not None:
             x = x[:size]
         return x
+    buffertype = memoryview
 
 try:
     from functools import izip, imap
@@ -83,3 +85,13 @@ def safeascii(x, isinstance = isinstance, unicode = unicode):
     if isinstance(x, unicode):
         x = x.encode("ascii")
     return x
+
+def safeencode(x, isinstance = isinstance, unicode = unicode, encoding = 'utf8'):
+    if isinstance(x, unicode):
+        x = x.encode(encoding)
+    return x
+
+def set_tempfile_delte(f, delete):
+    f.delete = delete
+    if hasattr(f, '_closer'):
+        f._closer.delete = delete

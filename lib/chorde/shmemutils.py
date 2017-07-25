@@ -237,7 +237,7 @@ class SharedCounterGenericBase(object):
                 try:
                     # Fill with zeros
                     size = cls.size(slots)
-                    zeros = '\x00' * 1024
+                    zeros = b'\x00' * 1024
                     while size >= 1024:
                         os.write(tmpfileno, zeros)
                         size -= 1024
@@ -359,7 +359,10 @@ class SharedCounterGenericBase(object):
         basemap = getattr(self, 'basemap', None)
         if basemap is not None:
             basemap.flush()
-            basemap.close()
+            try:
+                basemap.close()
+            except:
+                pass
         self.bitmap = None
         self.slots = None
         self.basemap = None
