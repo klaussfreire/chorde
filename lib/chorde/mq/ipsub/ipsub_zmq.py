@@ -3,7 +3,10 @@ import weakref
 import time
 import zmq
 import logging
-import Queue
+try:
+    import Queue
+except ImportError:
+    import queue as Queue
 import threading
 try:
     import thread
