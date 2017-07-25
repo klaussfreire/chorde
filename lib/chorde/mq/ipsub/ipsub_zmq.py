@@ -6,7 +6,7 @@ import logging
 try:
     import Queue
 except ImportError:
-    import queue as Queue
+    import queue as Queue  # lint:ok
 import threading
 try:
     import thread
