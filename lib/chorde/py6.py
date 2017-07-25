@@ -13,6 +13,11 @@ except NameError:
     xrange = range
 
 try:
+    long
+except NameError:
+    long = int
+
+try:
     from functools import izip, imap
     lzip = zip
     lmap = map
