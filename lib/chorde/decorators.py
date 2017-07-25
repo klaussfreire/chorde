@@ -2,7 +2,7 @@
 from functools import wraps as _wraps
 from functools import partial
 import weakref
-import md5
+import hashlib
 import time
 import logging
 import random
@@ -63,7 +63,7 @@ def _make_namespace(f, salt = None):
         fpath = ''
     
     try:
-        body_digest = md5.md5(fpath)
+        body_digest = hashlib.md5(fpath)
         if salt:
             body_digest.update(salt)
         if fcode:
