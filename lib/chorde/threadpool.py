@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+
 import collections
 import functools
 import itertools
@@ -11,7 +13,7 @@ import threading
 import time
 import weakref
 
-import worker
+from . import worker
 
 from chorde.py6 import *
 
@@ -51,7 +53,7 @@ class WorkerThread(threading.Thread):
             self.join()
 
 try:
-    from clients._async import ExceptionWrapper
+    from .clients._async import ExceptionWrapper
 except ImportError:
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('exc',)
