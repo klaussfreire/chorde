@@ -196,8 +196,8 @@ class ThreadPool:
                 q = qget(qname)
                 qpos = pget(qname,0)
                 prio = qprio(qname,1)
-                margin = max(prio,min_batch)
-                batch = qslots * prio
+                margin = int(max(prio,min_batch))
+                batch = int(max(1, qslots * prio))
                 if batch >= (len(q) - margin - qpos):
                     #print "move %s" % (qname,)
                     q = qpop(qname)
