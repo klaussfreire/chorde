@@ -355,7 +355,7 @@ class CoherenceManager(object):
         group_pending = self.group_pending
         try:
             # Try iterating
-            for rv in group_pending.itervalues():
+            for rv in itervalues(group_pending):
                 if (now - rv[1]) > _REFRESH_TIMEOUT:
                     needs_refresh = True
                     break
@@ -372,7 +372,7 @@ class CoherenceManager(object):
             needs_refresh = False
             try:
                 # Try iterating
-                for k,rv in group_pending.iteritems():
+                for k,rv in iteritems(group_pending):
                     delta = now - rv[1]
                     if delta > _PENDING_TIMEOUT:
                         clean.append(k)
@@ -380,7 +380,7 @@ class CoherenceManager(object):
                         needs_refresh = True
             except RuntimeError:
                 # Bah, gotta snapshot
-                for k,rv in group_pending.items():
+                for k,rv in listitems(group_pending):
                     delta = now - rv[1]
                     if delta > _PENDING_TIMEOUT:
                         clean.append(k)

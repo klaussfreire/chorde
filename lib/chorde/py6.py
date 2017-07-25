@@ -45,7 +45,26 @@ if _sys.version_info > (3,):
     get_function_name = _operator.attrgetter('__name__')
     iter_get_next = _operator.attrgetter('__next__')
     unicode = str
+    def lfilter(p, x):
+        return list(filter(p, x))
+    def listkeys(d):
+        return list(d.keys())
+    def listvalues(d):
+        return list(d.values())
+    def listitems(d):
+        return list(d.items())
+    viewkeys = iterkeys = _operator.methodcaller('keys')
+    itervalues = _operator.methodcaller('values')
+    iteritems = _operator.methodcaller('items')
 else:
     get_function_name = _operator.attrgetter('func_name')
     iter_get_next = _operator.attrgetter('next')
+    lfilter = filter
+    listkeys = _operator.methodcaller('keys')
+    listvalues = _operator.methodcaller('values')
+    listitems = _operator.methodcaller('items')
+    viewkeys = _operator.methodcaller('viewkeys')
+    iterkeys = _operator.methodcaller('iterkeys')
+    itervalues = _operator.methodcaller('itervalues')
+    iteritems = _operator.methodcaller('iteritems')
 

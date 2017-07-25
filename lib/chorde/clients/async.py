@@ -348,7 +348,7 @@ class AsyncCacheWriterPool:
     @serialize
     def clearqueue(self):
         delayed = []
-        for entry in self.queueset.itervalues():
+        for entry in itervalues(self.queueset):
             value = entry[0]
             if hasattr(value, 'undefer') and hasattr(value, 'future'):
                 future = getattr(value, 'future', None)
@@ -1049,7 +1049,7 @@ def makeFutureWrapper(base):
         def __init__(self, wrapped):
             self.__wrapped = wrapped
 
-        for name, fn in vars(base).iteritems():
+        for name, fn in vars(base).items():
             if not name.startswith('__') and callable(fn):
                 def mkf(name, fn):
                     @functools.wraps(fn)
@@ -1308,7 +1308,7 @@ class AsyncCacheProcessor(object):
         return WrappedCacheProcessor(self, client)
     
     def getTtl(self, key, default = NONE, **kw):
-        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
+        if not kw or not (viewkeys(kw) - COALESCE_IGNORE_KWARGS):
             if default is NONE:
                 ckey = key
             else:
@@ -1319,7 +1319,7 @@ class AsyncCacheProcessor(object):
             self.coalesce_getTtl, ckey)
     
     def get(self, key, default = NONE, **kw):
-        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
+        if not kw or not (viewkeys(kw) - COALESCE_IGNORE_KWARGS):
             if default is NONE:
                 ckey = key
             else:

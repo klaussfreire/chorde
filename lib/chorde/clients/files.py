@@ -3,6 +3,8 @@ from . import base, inproc
 from .base import NONE, CacheMissError
 from chorde import shmemutils, sPickle, serialize
 
+from chorde.py6 import *
+
 import functools
 import hashlib
 import heapq
@@ -30,14 +32,14 @@ def _register_files(cache):
 
 def cachePurge(timeout = 0):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
     
     for cache in caches:
         cache.purge(timeout)
 
 def cacheClear():
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
     
     for cache in caches:
         cache.clear()

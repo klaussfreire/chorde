@@ -6,6 +6,8 @@ import json
 import os
 from collections import defaultdict
 
+from chorde.py6 import *
+
 try:
     import cPickle
 except ImportError:
@@ -255,7 +257,7 @@ class BaseIPSub(object):
                 prefix = update[0][:MAX_PREFIX]
             called = set()
             rrv = rv = None
-            for cb_prefix, callbacks in listeners.items():
+            for cb_prefix, callbacks in listitems(listeners):
                 if prefix is None or prefix.startswith(cb_prefix):
                     byebye = set()
                     for callback in set(callbacks):

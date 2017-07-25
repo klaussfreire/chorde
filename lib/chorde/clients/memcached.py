@@ -268,7 +268,7 @@ class MemcachedStoreClient(memcache.Client):
                 return {}
             sockets = {
                 server.socket : [server, buf]
-                for server, buf in buffers.iteritems()
+                for server, buf in iteritems(buffers)
             }
             fdmap = { sock.fileno() : sock for sock in sockets }.__getitem__
             unsent = {}
@@ -297,7 +297,7 @@ class MemcachedStoreClient(memcache.Client):
                         poller.unregister(sock)
                 elif not wlist:
                     # No error, no ready socket, means timeout
-                    for sock, (server, buf) in sockets.iteritems():
+                    for sock, (server, buf) in iteritems(sockets):
                         unsent[server] = buf
                         if mark_dead:
                             server.mark_dead("timeout")
@@ -370,7 +370,7 @@ class MemcachedStoreClient(memcache.Client):
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
                 server : "get %s\r\n" % (" ".join(server_keys[server]),)
-                for server in server_keys.iterkeys()
+                for server in server_keys
             })
             dead_servers = unsent.keys()
             del unsent
@@ -480,13 +480,13 @@ class MemcachedStoreClient(memcache.Client):
     
             self._statlog('set_multi')
     
-            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping, key_prefix)
     
             # send out all requests on each server before reading anything
             notstored = [] # original keys.
     
             server_commands = {}
-            for server in server_keys.iterkeys():
+            for server in server_keys:
                 bigcmd = []
                 write = bigcmd.append
                 for key in server_keys[server]: # These are mangled keys
@@ -508,12 +508,12 @@ class MemcachedStoreClient(memcache.Client):
                 del server_keys[server]
     
             #  short-circuit if there are no servers, just return all keys
-            if not server_keys: return(mapping.keys())
+            if not server_keys: return(listkeys(mapping))
     
             # wait for all confirmations
             sockets = {
                 server.socket : [server, len(keys)]
-                for server, keys in server_keys.iteritems()
+                for server, keys in iteritems(server_keys)
             }
             if sockets:
                 socket_timeout = max([server.socket_timeout for server in server_keys]) * 1000
@@ -539,7 +539,7 @@ class MemcachedStoreClient(memcache.Client):
                         # No error, no ready socket, means timeout
                         for sock in sockets:
                             sockets[sock][0].mark_dead("timeout")
-                        for sock, (server, pending_keys) in sockets.iteritems():
+                        for sock, (server, pending_keys) in iteritems(sockets):
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
                     for sock in rlist:
@@ -578,7 +578,7 @@ class MemcachedStoreClient(memcache.Client):
                 return {}
             sockets = {
                 server.socket : [server, buf]
-                for server, buf in buffers.iteritems()
+                for server, buf in iteritems(buffers)
             }
             unsent = {}
             pops = []
@@ -590,9 +590,9 @@ class MemcachedStoreClient(memcache.Client):
             select_ = select.select
             socket_timeout = max([server.socket_timeout for server in buffers])
             while sockets:
-                rlist, wlist, xlist = select_((), sockets.keys(), (), socket_timeout)
+                rlist, wlist, xlist = select_((), listkeys(sockets), (), socket_timeout)
                 if not wlist:
-                    for sock, (server, buf) in sockets.iteritems():
+                    for sock, (server, buf) in iteritems(sockets):
                         unsent[server] = buf
                     return
                 for sock in wlist:
@@ -665,7 +665,7 @@ class MemcachedStoreClient(memcache.Client):
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
                 server : "get %s\r\n" % (" ".join(server_keys[server]),)
-                for server in server_keys.iterkeys()
+                for server in server_keys
             })
             dead_servers = unsent.keys()
             del unsent
@@ -689,7 +689,7 @@ class MemcachedStoreClient(memcache.Client):
                 select_ = select.select
                 max_blocking_buffer = 4096
                 while sockets:
-                    rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
+                    rlist, wlist, xlist = select_(listkeys(sockets), (), (), socket_timeout)
                     if not rlist:
                         for sock in sockets:
                             sockets[sock].mark_dead("timeout")
@@ -760,13 +760,13 @@ class MemcachedStoreClient(memcache.Client):
     
             self._statlog('set_multi')
     
-            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping.iterkeys(), key_prefix)
+            server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping, key_prefix)
     
             # send out all requests on each server before reading anything
             notstored = [] # original keys.
     
             server_commands = {}
-            for server in server_keys.iterkeys():
+            for server in server_keys:
                 bigcmd = []
                 write = bigcmd.append
                 for key in server_keys[server]: # These are mangled keys
@@ -788,23 +788,23 @@ class MemcachedStoreClient(memcache.Client):
                 del server_keys[server]
     
             #  short-circuit if there are no servers, just return all keys
-            if not server_keys: return(mapping.keys())
+            if not server_keys: return(listkeys(mapping))
     
             # wait for all confirmations
             sockets = {
                 server.socket : [server, len(keys)]
-                for server, keys in server_keys.iteritems()
+                for server, keys in iteritems(server_keys)
             }
             if sockets:
                 socket_timeout = max([server.socket_timeout for server in server_keys])
                 select_ = select.select
                 max_blocking_buffer = 4096
                 while sockets:
-                    rlist, wlist, xlist = select_(sockets.keys(), (), (), socket_timeout)
+                    rlist, wlist, xlist = select_(listkeys(sockets), (), (), socket_timeout)
                     if not rlist:
                         for sock in sockets:
                             sockets[sock][0].mark_dead("timeout")
-                        for sock, (server, pending_keys) in sockets.iteritems():
+                        for sock, (server, pending_keys) in iteritems(sockets):
                             notstored.extend(map(prefixed_to_orig_key.__getitem__, server_keys[server][-pending_keys:]))
                         break
                     for sock in rlist:
@@ -931,7 +931,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 del self.client
                 client_stats = self.client.get_stats()
             for srv,s in client_stats:
-                for k,v in s.iteritems():
+                for k,v in iteritems(s):
                     try:
                         v = int(v)
                         stats[k] += v
@@ -1071,7 +1071,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         ref_npages, _, ref_ttl, ref_version, _ = pages[0]
         data = [None] * ref_npages
         
-        for pageno, (npages, page, ttl, version, pagedata) in pages.iteritems():
+        for pageno, (npages, page, ttl, version, pagedata) in iteritems(pages):
             if (    pageno != page 
                  or version != ref_version 
                  or npages != ref_npages 
@@ -1502,7 +1502,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 del self.client
                 client_stats = self.client.get_stats()
             for srv,s in client_stats:
-                for k,v in s.iteritems():
+                for k,v in iteritems(s):
                     try:
                         v = int(v)
                         stats[k] += v
@@ -1571,7 +1571,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             for i in xrange(2):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
-                    for key, (value, ttl) in workset.iteritems():
+                    for key, (value, ttl) in iteritems(workset):
                         key = encode_key(key)
                         if value is NONE:
                             deletions.append(key)
@@ -1599,7 +1599,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                     except:
                         logging.error("Exception in background writer", exc_info = True)
                 if plan:
-                    for ttl, batch in plan.iteritems():
+                    for ttl, batch in iteritems(plan):
                         try:
                             ttl = min(ttl, MAX_MEMCACHE_TTL)
                             client.set_multi(batch, ttl)

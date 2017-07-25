@@ -4,11 +4,16 @@ import random
 import unittest
 import threading
 import functools
-from chorde.decorators import cached, coherent_cached, CacheMissError, NO_NAMESPACE
+from chorde.decorators import cached, CacheMissError, NO_NAMESPACE
 from chorde.clients.inproc import InprocCacheClient
 from chorde.clients.tiered import TieredInclusiveClient
 from chorde.clients.async import AsyncWriteCacheClient
 from tests.coherence import skipIfUnsupported, ipsub, zmq
+
+try:
+    from chorde.decorators import coherent_cached
+except ImportError:
+    coherent_cached = None
 
 from chorde.py6 import *
 

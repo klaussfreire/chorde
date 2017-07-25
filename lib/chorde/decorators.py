@@ -10,6 +10,8 @@ import pydoc
 
 from .clients import base, async, tiered
 
+from chorde.py6 import *
+
 try:
     from .mq import coherence
     from .clients import coherent
@@ -39,7 +41,7 @@ def wraps(wrapped):
         wrapper = w(wrapper)
         wrapper.__doc__ = "\n".join(
             pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3] 
-            + filter(bool, [wrapper.__doc__]))
+            + lfilter(bool, [wrapper.__doc__]))
         return wrapper
     return decor
 

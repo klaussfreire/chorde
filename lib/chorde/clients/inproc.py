@@ -3,7 +3,7 @@ import time
 import threading
 import weakref
 
-from chorde.py6 import get_function_name
+from chorde.py6 import get_function_name, iteritems, iterkeys, listkeys
 
 from . import base
 
@@ -39,7 +39,7 @@ def cacheStats():
 
     with _caches_mutex:
         rv = {}
-        for cache in _caches.iterkeys():
+        for cache in iterkeys(_caches):
             fname = get_function_name(cache)
             
             # Sometimes, functions are different but named the same. Usually
@@ -51,7 +51,7 @@ def cacheStats():
 
 def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
     
     for cache in caches:
         if sleeptime is not None:
@@ -94,7 +94,7 @@ def cacheClear():
     """
 
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
     
     for cache in caches:
         cache.clear()
@@ -213,7 +213,7 @@ class InprocCacheClient(base.BaseCacheClient):
         curtime = time.time() - timeout
         try:
             deletions_append = deletions.append
-            for k, (v, timestamp) in cache.iteritems():
+            for k, (v, timestamp) in iteritems(cache):
                 if timestamp < curtime:
                     deletions_append(k)
         except RuntimeError:
@@ -223,7 +223,7 @@ class InprocCacheClient(base.BaseCacheClient):
             del deletions[:]
             cache_get = cache.get
             deletions_append = deletions.append
-            for k in cache.keys():
+            for k in listkeys(cache):
                 v = cache_get(v)
                 if v is not None:
                     v, timestamp = v
