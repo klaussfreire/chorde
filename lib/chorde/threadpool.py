@@ -58,6 +58,8 @@ class WorkerThread(threading.Thread):
 try:
     from .clients._async import ExceptionWrapper
 except ImportError:
+    from six import reraise
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('exc',)
 
@@ -67,7 +69,7 @@ except ImportError:
         def reraise(self):
             exc = self.exc
             del self.exc
-            raise exc[0], exc[1], exc[2]
+            reraise(exc[0], exc[1], exc[2])
 
 class WaitIter:
     def __init__(self, event, queues, timeout = 5):

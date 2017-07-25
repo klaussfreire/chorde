@@ -855,7 +855,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             client_class = MemcachedStoreClient,
             **client_args):
         if checksum_key is None:
-            raise ValueError, "MemcachedClient requires a checksum key for security checks"
+            raise ValueError("MemcachedClient requires a checksum key for security checks")
         
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0
@@ -1062,7 +1062,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
     def decode_pages(self, pages, key, canclear=True):
         if 0 not in pages:
-            raise ValueError, "Missing page"
+            raise ValueError("Missing page")
         
         ref_npages, _, ref_ttl, ref_version, _ = pages[0]
         data = [None] * ref_npages
@@ -1074,13 +1074,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                  or not (0 <= page < ref_npages) 
                  or data[page] is not None
                  or not isinstance(pagedata,str) ):
-                raise ValueError, "Inconsistent data in cache"
+                raise ValueError("Inconsistent data in cache")
             data[page] = pagedata
         
         # if there is any page missing
         for page_data in data:
             if page_data is None:
-                raise ValueError, "Inconsistent data in cache"
+                raise ValueError("Inconsistent data in cache")
 
         # free up memory if possible
         if canclear:
@@ -1218,7 +1218,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def get(self, key, default=NONE, **kw):
         rv, ttl = self._getTtl(key, default, ttl_skip = 0, **kw)
         if ttl < 0 and default is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return rv
 
@@ -1728,7 +1728,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
         elif rv is False:
             return False
         else:
-            raise RuntimeError, "Memcache add returned %r" % (rv,)
+            raise RuntimeError("Memcache add returned %r" % (rv,))
     
     def delete(self, key):
         self._enqueue_put(key, NONE, 0)

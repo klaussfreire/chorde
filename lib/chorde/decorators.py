@@ -976,7 +976,7 @@ def cached(client, ttl,
                 stats.misses += 1
 
             if rv is __NONE:
-                raise CacheMissError, callkey
+                raise CacheMissError(callkey)
             else:
                 return rv
         if decorate is not None:

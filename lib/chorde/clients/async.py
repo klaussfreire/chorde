@@ -561,7 +561,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
     
     def start(self):
         if self.writer is not None:
-            raise AssertionError, "Starting AsyncCacheClient twice"
+            raise AssertionError("Starting AsyncCacheClient twice")
         self.assert_started()
     
     def stop(self, abort_tasks=False):
@@ -624,7 +624,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 if value is _DELETE:
                     # Deletion means a miss... right?
                     if default is NONE:
-                        raise CacheMissError, key
+                        raise CacheMissError(key)
                     else:
                         return default, -1
                 elif value is _EXPIRE:
@@ -642,7 +642,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             if writer._contains(_CLEAR):
                 # Well, 
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default, -1
         
@@ -651,7 +651,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if ettl is not None:
             ttl = ettl
         if value is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return value, ttl
 
@@ -697,7 +697,9 @@ except ImportError:
         "using pure-python version which is not atomic and requires"
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
-    
+
+    from six import reraise
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('value',)
     
@@ -707,7 +709,7 @@ except ImportError:
         def reraise(self):
             exc = self.value
             del self.value
-            raise exc[0], exc[1], exc[2]
+            reraise(exc[0], exc[1], exc[2])
 
     class Future(object):  # lint:ok
         __slots__ = (
@@ -979,7 +981,7 @@ except ImportError:
             if hasattr(self, '_value'):
                 value = self._value
                 if isinstance(value, ExceptionWrapper):
-                    raise value.value[0], value.value[1], value.value[2]
+                    reraise(value.value[0], value.value[1], value.value[2])
                 elif value is CacheMissError:
                     raise CacheMissError
                 else:

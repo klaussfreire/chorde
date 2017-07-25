@@ -100,7 +100,7 @@ class BaseCacheClient(object):
             and the remaining TTL.
         """
         if default is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return (default, -1)
     
@@ -114,7 +114,7 @@ class BaseCacheClient(object):
     def get(self, key, default = NONE, **kw):
         rv, ttl = self.getTtl(key, default, **kw)
         if ttl < 0 and default is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return rv
 
