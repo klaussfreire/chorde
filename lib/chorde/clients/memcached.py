@@ -21,6 +21,7 @@ from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
 
 _RENEW = object()
+_DISCONNECT = object()
 
 STATS_CACHE_TIME = 1
 # memcache doesn't allow TTL bigger than 2038
@@ -976,6 +977,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
     def usage(self):
         return self.stats.get('bytes', 0)
 
+    def disconnect(self):
+        self.client.disconnect_all()
+
     def shorten_key(self, key,
             tmap = b''.join(b'\x01' if c<33 or c == 127 else b'\x00' for c in xrange(256)),
             imap = imap, hexlify = binascii.hexlify, safeascii = safeascii,
@@ -1558,6 +1562,11 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
     def queuelen(self):
         return len(self.queueset)
 
+    def disconnect(self):
+        self.client.disconnect_all()
+        self.queueset[_DISCONNECT] = (None, -1)
+        self.workev.set()
+
     def _enqueue_put(self, key, value, ttl):
         # Atomic insert
         value = value, ttl
@@ -1591,6 +1600,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             workev = self.workev
             workev.clear()
             workset = self._dequeue_put()
+            disconnect = False
 
             # Separate into deletions, puttions, and group by ttl
             # since put_multi can only handle one ttl.
@@ -1605,6 +1615,10 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 # It can explode if a thread lingers, so restart if that happens
                 try:
                     for key, (value, ttl) in iteritems(workset):
+                        if key is _DISCONNECT:
+                            # Do it later
+                            disconnect = True
+                            continue
                         key = encode_key(key)
                         if value is NONE:
                             deletions.append(key)
@@ -1652,6 +1666,9 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                 # Let us be suicidal
                 del client
                 workset.clear()
+
+            if disconnect:
+                self.client.disconnect_all()
 
             del self, plan, deletions, renewals, encode, encode_key
             del workset

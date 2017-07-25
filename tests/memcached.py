@@ -56,7 +56,7 @@ class MemcacheStoreTest(TestCase):
             checksum_key = "test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
-        client.client.disconnect_all()
+        client.disconnect()
 
     def testConsistentHashing(self):
         from chorde.clients.memcached import MemcachedClient
@@ -82,9 +82,9 @@ class MemcacheStoreTest(TestCase):
         self.assertEqual(s1.address, c1.client.servers[-1].address)
         self.assertEqual(s2.address, c2.client.servers[-1].address)
         self.assertEqual(s3.address, c3.client.servers[-1].address)
-        c1.client.disconnect_all()
-        c2.client.disconnect_all()
-        c3.client.disconnect_all()
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
 
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
@@ -108,7 +108,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
-        self.client.client.disconnect_all()
+        self.client.disconnect()
 
     def testSucceedFast(self):
         client = self.client
@@ -292,7 +292,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
-        self.rclient.client.disconnect_all()
+        self.rclient.disconnect()
 
     testStats = unittest.skip("not applicable")(MemcacheTest.testStats)
 
@@ -406,8 +406,8 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
 
     def tearDown(self):
         super(BuiltinNamespaceMemcacheTest, self).tearDown()
-        self.bclient.client.disconnect_all()
-        self.rclient.client.disconnect_all()
+        self.bclient.disconnect()
+        self.rclient.disconnect()
 
     # We don't implement clear
     testNamespaceClear = unittest.skip("not applicable")(NamespaceWrapperTestMixIn.testNamespaceClear)
@@ -426,7 +426,8 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
-        self.client.client.disconnect_all()
+        self.client.disconnect()
+        time.sleep(0.05)
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -462,9 +463,9 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
 
     def tearDown(self):
         # Manually clear memcached
-        FastMemcacheTest.tearDown(self)
         self.client2.client.flush_all()
-        self.client2.client.disconnect_all()
+        self.client2.disconnect()
+        FastMemcacheTest.tearDown(self)
 
     def testFailFast(self):
         client = self.client
@@ -489,6 +490,7 @@ class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
-        self.rclient.client.disconnect_all()
+        self.rclient.disconnect()
+        time.sleep(0.05)
 
     testStats = None
