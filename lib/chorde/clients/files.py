@@ -409,7 +409,7 @@ class FilesCacheClient(base.BaseCacheClient):
         if os.path.exists(keypath):
             # Huh... compare
             if os.path.getsize(keypath) == len(key):
-                with open(keypath) as ekey:
+                with open(keypath, "rb") as ekey:
                     if ekey.read() == key:
                         reuse_keyfile = True
             if reuse_keyfile and not replace:
@@ -541,7 +541,7 @@ class FilesCacheClient(base.BaseCacheClient):
         if os.path.exists(keypath):
             # Huh... compare
             if os.path.getsize(keypath) == len(key):
-                with open(keypath) as ekey:
+                with open(keypath, "rb") as ekey:
                     if ekey.read() == key:
                         # Touch
                         now = time.time()
@@ -609,7 +609,8 @@ class FilesCacheClient(base.BaseCacheClient):
         if self._failfast_cache.get(key, 0) > (time.time() - self.failfast_time):
             return default, -1
         
-        with open(keypath) as ekey:
+        with open(keypath, 'rb') as ekey:
+            ekey.seek(0)
             if ekey.read() == key:
                 # Um... check the validity of the current value before going further
                 ttl = os.path.getmtime(keypath)
@@ -672,7 +673,7 @@ class FilesCacheClient(base.BaseCacheClient):
                 del self._failfast_cache[key]
             except:
                 pass
-            return ettl > ttl
+            return ttl is None or ettl > ttl
 
     def close(self):
         # Free up stuff

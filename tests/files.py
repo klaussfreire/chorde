@@ -54,7 +54,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
     def testMmap(self):
         client = self.client
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
         client.put("somekey", bigval, 86400)
         cachedval = client.get("somekey")
 
@@ -80,7 +80,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         del tmp
 
         tmp = client.get("weefile")
-        self.assertIsInstance(tmp, file)
+        self.assertIsInstance(tmp, filetype)
         self.assertTrue(os.path.exists(tmp.name))
         self.assertEqual(tmp.read(), rnd)
         tmp.close()
@@ -102,7 +102,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         del tmp
 
         tmp = client.get("weefile")
-        self.assertIsInstance(tmp, file)
+        self.assertIsInstance(tmp, filetype)
         self.assertTrue(os.path.exists(tmp.name))
         self.assertEqual(tmp.read(), rnd)
         tmp.close()
@@ -110,11 +110,11 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
 
     def testLRU(self):
         client = self.client
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
-        maxentries = SIZE / len(bigval)
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
+        maxentries = SIZE // len(bigval)
 
         for i in xrange(maxentries+1):
-            client.put(i, bigval+str(i), 86400)
+            client.put(i, bigval+safeascii(str(i)), 86400)
             
             time.sleep(TIME_RESOLUTION*2)
             
@@ -123,17 +123,17 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
             self.assertTrue(client.contains(i))
             cachedval = client.get(i)
             self.assertTrue(buffer(cachedval, 0, len(bigval)) == buffer(bigval))
-            self.assertTrue(buffer(cachedval, len(bigval)) == buffer(str(i)))
+            self.assertTrue(buffer(cachedval, len(bigval)) == buffer(safeascii(str(i))))
             del cachedval
         self.assertFalse(client.contains(0))
-        self.assertTrue(client.contains(maxentries/2))
+        self.assertTrue(client.contains(maxentries//2))
 
     def testLimit(self):
         # Gotta be lenient on usage tests, since there's unknown overhead
         client = self.client
         cap = client.capacity
-        bigval = "12" * chorde.clients.files.MMAP_THRESHOLD
-        maxentries = SIZE / len(bigval)
+        bigval = b"12" * chorde.clients.files.MMAP_THRESHOLD
+        maxentries = SIZE // len(bigval)
 
         for i in xrange(maxentries*2):
             client.put(i,bigval,86400)
@@ -147,11 +147,11 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         client.close()
         
         # Break it
-        with open(os.path.join(client.basepath, "sizemap.32.100"), "w") as f:
+        with open(os.path.join(client.basepath, "sizemap.32.100"), "wb") as f:
             f.seek(0, os.SEEK_END)
             sz = f.tell()
             f.seek(0)
-            f.write("\xff" * sz)
+            f.write(b"\xff" * sz)
         
         self.client = client = self.setUpClient()
         self.assertEqual(client.usage, usage)

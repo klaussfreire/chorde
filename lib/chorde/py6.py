@@ -55,6 +55,7 @@ except NameError:
         return isinstance(x, Callable)
 
 if _sys.version_info > (3,):
+    import io as _io
     get_function_name = _operator.attrgetter('__name__')
     iter_get_next = _operator.attrgetter('__next__')
     unicode = str
@@ -69,6 +70,7 @@ if _sys.version_info > (3,):
     viewkeys = iterkeys = _operator.methodcaller('keys')
     itervalues = _operator.methodcaller('values')
     iteritems = _operator.methodcaller('items')
+    filetype = _io.IOBase
 else:
     get_function_name = _operator.attrgetter('func_name')
     iter_get_next = _operator.attrgetter('next')
@@ -80,6 +82,7 @@ else:
     iterkeys = _operator.methodcaller('iterkeys')
     itervalues = _operator.methodcaller('itervalues')
     iteritems = _operator.methodcaller('iteritems')
+    filetype = file
 
 def safeascii(x, isinstance = isinstance, unicode = unicode):
     if isinstance(x, unicode):
