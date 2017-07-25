@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from itertools import izip, islice
+from itertools import islice
 import operator
 import logging
 
