@@ -3,6 +3,8 @@ import time
 import threading
 import weakref
 
+from chorde.py6 import get_function_name
+
 from . import base
 
 try:
@@ -38,7 +40,7 @@ def cacheStats():
     with _caches_mutex:
         rv = {}
         for cache in _caches.iterkeys():
-            fname = cache.func_name
+            fname = get_function_name(cache)
             
             # Sometimes, functions are different but named the same. Usually
             # they're related, so we aggregate those stats.
