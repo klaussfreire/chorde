@@ -15,6 +15,7 @@ from threading import Event, Thread, Lock
 
 from chorde.py6 import *
 import binascii
+import base64
 
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
@@ -951,7 +952,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         return self.stats.get('bytes', 0)
 
     def shorten_key(self, key,
-            tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
+            tmap = b''.join(b'\x01' if c<33 or c == 127 else b'\x00' for c in xrange(256)),
             imap = imap, hexlify = binascii.hexlify,
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
@@ -959,21 +960,21 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if not isinstance(key, basestring):
             try:
                 # Try JSON
-                key = "J#"+json.dumps(key, separators=JSON_SEPARATORS)
+                key = b"J#"+json.dumps(key, separators=JSON_SEPARATORS)
                 zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = "P#"+self.key_pickler.dumps(key,2).encode("base64").replace("\n","")
+                key = b"P#"+base64.b64encode(self.key_pickler.dumps(key,2)).replace(b"\n",b"")
                 zpfx = self.compress_prefix
         elif isinstance(key, unicode):
-            key = "U#" + key.encode("utf-8")
+            key = b"U#" + key.encode("utf-8")
             zpfx = self.compress_prefix
         else:
-            zpfx = self.compress_prefix + '#'
+            zpfx = self.compress_prefix + b'#'
 
         # keys cannot contain control characters or spaces
         if any(imap(ord, key.translate(tmap))):
-            key = "B#" + key.encode("base64").replace("\n","")
+            key = b"B#" + base64.b64encode(key).replace(b"\n",b"")
             zpfx = self.compress_prefix
 
         if self.compress:
@@ -984,17 +985,17 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # and shorten it by truncating and perhaps appending an MD5 hash.
             exact = False
             try:
-                key = "H%s#%s" % (hexlify(hashlib.md5(key).digest()),key[:self.max_backing_key_length-48])
+                key = b"H%s#%s" % (hexlify(hashlib.md5(key).digest()),key[:self.max_backing_key_length-48])
             except ImportError:
-                key = "H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
+                key = b"H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
         
         if not key:
-            key = "#NULL#"
+            key = b"#NULL#"
         
         if self.namespace:
-            key = "%s|%s" % (self.namespace,key)
+            key = b"|".join([self.namespace,key])
         
-        return "%s%s%s" % (self.client_pickler_key, self.version_prefix, key), exact
+        return b"".join([self.client_pickler_key, self.version_prefix, key]), exact
     
     def get_version_stamp(self, short_key = None):
         if short_key is None:
