@@ -71,14 +71,17 @@ except ImportError:
         import json as cjson  # lint:ok
 
 class ZlibFile:
-    def __init__(self, fileobj, level = 9):
+    def __init__(self, fileobj, level = 9, encoding = 'ascii'):
         self.fileobj = fileobj
         self.compressor = zlib.compressobj(level)
         self.level = level
         self.flushed = True
         self.closed = False
+        self.encoding = encoding
 
-    def write(self, buf):
+    def write(self, buf, isinstance = isinstance, unicode = unicode):
+        if isinstance(buf, unicode):
+            buf = buf.encode(self.encoding)
         self.fileobj.write(self.compressor.compress(buf))
         self.flushed = False
 
@@ -112,13 +115,16 @@ try:
     import lz4
     
     class LZ4File:
-        def __init__(self, fileobj, level = 9):
+        def __init__(self, fileobj, level = 9, encoding = 'ascii'):
             self.fileobj = fileobj
             self.buffer = StringIO()
             self.flushed = True
             self.closed = False
+            self.encoding = encoding
     
-        def write(self, buf):
+        def write(self, buf, isinstance = isinstance, unicode = unicode):
+            if isinstance(buf, unicode):
+                buf = buf.encode(self.encoding)
             self.buffer.write(buf)
             self.flushed = False
     
@@ -185,7 +191,7 @@ class MemcachedStoreClient(memcache.Client):
         server_hash_function = self.server_hashes_function = self.server_hash_function = getattr(
             self, 'server_hash_function', memcache.serverHashFunction)
         server_hashes = sorted([
-            (server_hash_function(("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT)).encode("ascii")), i)
+            (server_hash_function(safeascii("%s:%s:%s" % (server.ip, server.port, self.SERVER_HASH_SALT))), i)
             for i,server in enumerate(self.servers)
         ])
         if server_hashes:
@@ -217,7 +223,7 @@ class MemcachedStoreClient(memcache.Client):
             server = self.buckets[server_ix]
             if server.connect():
                 return server, key
-            serverhash = server_hash_function((str(serverhash) + str(i)).encode("ascii"))
+            serverhash = server_hash_function(safeascii(str(serverhash) + str(i)))
             if server_hashes:
                 server_ix = server_indexes[bisect.bisect_left(server_hashes, serverhash)]
             else:
@@ -486,7 +492,7 @@ class MemcachedStoreClient(memcache.Client):
             '''
     
             self._statlog('set_multi')
-    
+
             server_keys, prefixed_to_orig_key = self._map_and_prefix_keys(mapping, key_prefix)
     
             # send out all requests on each server before reading anything
@@ -502,7 +508,7 @@ class MemcachedStoreClient(memcache.Client):
                             min_compress_len)
                     if store_info:
                         write([b"set ", key,
-                            (" %d %d %d\r\n" % (store_info[0], time, store_info[1])).encode("ascii"),
+                            safeascii(" %d %d %d\r\n" % (store_info[0], time, store_info[1])),
                             store_info[2], b"\r\n"])
                     else:
                         notstored.append(prefixed_to_orig_key[key])
@@ -783,7 +789,7 @@ class MemcachedStoreClient(memcache.Client):
                             min_compress_len)
                     if store_info:
                         write([b"set ", key,
-                            (b" %d %d %d\r\n" % (store_info[0], time, store_info[1])).encode("ascii"),
+                            safeascii(b" %d %d %d\r\n" % (store_info[0], time, store_info[1])),
                             store_info[2], b"\r\n"])
                     else:
                         notstored.append(prefixed_to_orig_key[key])
@@ -886,10 +892,10 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if client_pickler is None:
             self.client_pickler = lambda *p, **kw: sPickle.SecurePickler(checksum_key, *p, **kw)
             self.client_unpickler = lambda *p, **kw: sPickle.SecureUnpickler(checksum_key, *p, **kw)
-            self.client_pickler_key = ('%s,' % (sPickle.checksum_algo_name,)).encode("ascii")
+            self.client_pickler_key = safeascii('%s,' % (sPickle.checksum_algo_name,))
         else:
             if isinstance(client_pickler_key, unicode):
-                client_pickler_key = client_pickler_key.encode("ascii")
+                client_pickler_key = safeascii(client_pickler_key)
             self.client_pickler = client_pickler
             self.client_unpickler = client_unpickler
             self.client_pickler_key = client_pickler_key
@@ -917,7 +923,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if 'pickleProtocol' not in client_args:
             # use binary protocol, otherwise binary data gets inflated
             # unreasonably when pickling
-            client_args['pickleProtocol'] = 2
+            client_args['pickleProtocol'] = getattr(cPickle, 'DEFAULT_PROTOCOL', 2)
 
         client_args['pickler'] = self.client_pickler
         client_args['unpickler'] = self.client_unpickler
@@ -965,7 +971,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
     def shorten_key(self, key,
             tmap = b''.join(b'\x01' if c<33 or c == 127 else b'\x00' for c in xrange(256)),
-            imap = imap, hexlify = binascii.hexlify,
+            imap = imap, hexlify = binascii.hexlify, safeascii = safeascii,
             isinstance = isinstance, basestring = basestring, unicode = unicode, str = str,
             ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
@@ -973,11 +979,11 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         if not isinstance(key, basestring):
             try:
                 # Try JSON
-                key = b"J#"+json.dumps(key, separators=JSON_SEPARATORS)
+                key = b"J#"+safeascii(json.dumps(key, separators=JSON_SEPARATORS))
                 zpfx = self.compress_prefix
             except:
                 # Try pickling
-                key = b"P#"+base64.b64encode(self.key_pickler.dumps(key,2)).replace(b"\n",b"")
+                key = b"P#"+base64.b64encode(safeascii(self.key_pickler.dumps(key,2))).replace(b"\n",b"")
                 zpfx = self.compress_prefix
         elif isinstance(key, unicode):
             key = b"U#" + key.encode("utf-8")
@@ -1006,7 +1012,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             try:
                 key = b"".join([b"H", hexlify(hashlib.md5(key).digest()), b"#", key[:self.max_backing_key_length-48]])
             except ImportError:
-                key = b"".join([b"H", ("%08X" % hash(key)).encode("ascii"), b"#", key[:self.max_backing_key_length-16]])
+                key = b"".join([b"H", safeascii("%08X" % hash(key)), b"#", key[:self.max_backing_key_length-16]])
         
         if not key:
             key = b"#NULL#"
@@ -1021,7 +1027,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             stamp_key = stamp_prefix
         else:
             # 8-bit hash to spread stamp keys, doesn't really need to be totally uniform, just almost
-            stamp_key = stamp_prefix + ("%02x" % (abs(zlib.adler32(short_key)) % 127,)).encode("ascii")
+            stamp_key = stamp_prefix + safeascii("%02x" % (abs(zlib.adler32(short_key)) % 127,))
         try:
             stamp = self.client.incr(stamp_key)
         except ValueError:
@@ -1207,7 +1213,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             try:
                 cached_key, cached_value = self.decode_pages(pages, key)
             except ValueError as e:
-                if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
+                if npages > 1 and multi_method and e.args and e.args[0] == "Inconsistent data in cache":
                     # try again, maybe there was a write between gets
                     pages.clear()
                     pages[0] = first_page = method(short_key+b"|0")
@@ -1273,7 +1279,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                 self.client.reset_cas()
 
     def _page_prefix(self, first_page, short_key):
-        return short_key+("|%04x|" % (first_page[3] & 0xFF)).encode("ascii")
+        return short_key+safeascii("|%04x|" % (first_page[3] & 0xFF))
 
     def put(self, key, value, ttl):
         # set_multi all pages in one roundtrip
@@ -1329,7 +1335,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
         for pageno in pages:
             if pageno:
-                page_key = page_prefix + ("%d" % pageno).encode("ascii")
+                page_key = page_prefix + safeascii("%d" % pageno)
             else:
                 page_key = short_key + b"|0"
             try:
@@ -1402,7 +1408,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
                     for page in xrange(1, npages):
-                        if not self.client.append(page_prefix + ("%d" % page).encode("ascii"),b""):
+                        if not self.client.append(page_prefix + safeascii("%d" % page),b""):
                             return False
                     return True
                 else:

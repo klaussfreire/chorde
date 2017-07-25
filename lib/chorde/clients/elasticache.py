@@ -18,20 +18,23 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
     @classmethod
     def get_cluster_from_config_entrypoint(cls, entrypoint, fallback = None):
         c = cls([entrypoint])
-        cluster_description = c.get("AmazonElastiCache:cluster")
-        if not cluster_description:
-            cluster_description = c.get_config("cluster")
-        if cluster_description:
-            cluster_description = cluster_description.split()
-        if not cluster_description or len(cluster_description) <= 1:
-            # Default, go directly to the configuration entry point
-            return [entrypoint] if fallback is None else fallback
-        else:
-            cluster_nodes = cluster_description[1:]
-            return [ 
-                "%s:%d" % (host.rstrip('.'), int(port)) 
-                for host, ip, port in [ node.split('|',2) for node in cluster_nodes ] 
-            ]
+        try:
+            cluster_description = c.get("AmazonElastiCache:cluster")
+            if not cluster_description:
+                cluster_description = c.get_config("cluster")
+            if cluster_description:
+                cluster_description = cluster_description.split()
+            if not cluster_description or len(cluster_description) <= 1:
+                # Default, go directly to the configuration entry point
+                return [entrypoint] if fallback is None else fallback
+            else:
+                cluster_nodes = cluster_description[1:]
+                return [ 
+                    "%s:%d" % (host.rstrip('.'), int(port)) 
+                    for host, ip, port in [ node.split('|',2) for node in cluster_nodes ] 
+                ]
+        finally:
+            c.disconnect_all()
     
     def get_config(self, key):
         self.check_key(key)
@@ -43,7 +46,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
             self._statlog("config get")
 
             try:
-                server.send_cmd("config get %s" % (key,))
+                server.send_cmd(b"config get %s" % (key,))
                 rkey = flags = rlen = None
 
                 rkey, flags, rlen, = self._expectconfigvalue(server, raise_exception=True)
@@ -53,7 +56,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
                 try:
                     value = self._recv_value(server, flags, rlen)
                 finally:
-                    server.expect("END", raise_exception=True)
+                    server.expect(b"END", raise_exception=True)
             except (memcache._Error, socket.error) as msg:
                 if isinstance(msg, tuple): msg = msg[1]
                 server.mark_dead(msg)
@@ -77,7 +80,7 @@ class ElastiCacheStoreClient(memcached.MemcachedStoreClient):
         if not line:
             line = server.readline(raise_exception)
 
-        if line and line[:6] == "CONFIG":
+        if line and line[:6] == b"CONFIG":
             resp, rkey, flags, len = line.split()
             flags = int(flags)
             rlen = int(len)

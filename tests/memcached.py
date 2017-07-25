@@ -56,6 +56,7 @@ class MemcacheStoreTest(TestCase):
             checksum_key = "test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
+        client.client.disconnect_all()
 
     def testConsistentHashing(self):
         from chorde.clients.memcached import MemcachedClient
@@ -75,12 +76,15 @@ class MemcacheStoreTest(TestCase):
             for s in c.client.servers:
                 s.connect = lambda *p, **kw : True
 
-        s1 = c1.client._get_server("127.0.0.3:11211")[0]
-        s2 = c2.client._get_server("127.0.0.3:11211")[0]
-        s3 = c3.client._get_server("127.0.0.3:11211")[0]
+        s1 = c1.client._get_server(b"127.0.0.3:11211")[0]
+        s2 = c2.client._get_server(b"127.0.0.3:11211")[0]
+        s3 = c3.client._get_server(b"127.0.0.3:11211")[0]
         self.assertEqual(s1.address, c1.client.servers[-1].address)
         self.assertEqual(s2.address, c2.client.servers[-1].address)
         self.assertEqual(s3.address, c3.client.servers[-1].address)
+        c1.client.disconnect_all()
+        c2.client.disconnect_all()
+        c3.client.disconnect_all()
 
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
@@ -90,6 +94,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
 
     # Big uncompressible (but ascii-compatible) value
     BIG_VALUE = base64.b64encode(os.urandom(4 << 20))
+    ENDMARK = b'ENDMARK'
 
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
@@ -103,6 +108,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
+        self.client.client.disconnect_all()
 
     def testSucceedFast(self):
         client = self.client
@@ -200,9 +206,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
             time.sleep(1) # let it write
             old_index_page = client.client.get(short_key+b"|0")
             old_page_prefix = client._page_prefix(old_index_page, short_key)
-            client.put("bigkey2", bigval + b"ENDMARK", 60)
+            client.put("bigkey2", bigval + self.ENDMARK, 60)
             self.assertIsNone(client.client.get(old_page_prefix+b"1"), "Not expired") # should have expired
-            self.assertEqual(client.get("bigkey2"), bigval + b"ENDMARK")
+            self.assertEqual(client.get("bigkey2"), bigval + self.ENDMARK)
 
     def testRenewBigValue(self):
         bigval = self.BIG_VALUE
@@ -286,6 +292,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
+        self.rclient.client.disconnect_all()
 
     testStats = unittest.skip("not applicable")(MemcacheTest.testStats)
 
@@ -325,16 +332,39 @@ class UncompressedMemcacheTest(MemcacheTest):
 
 @skipIfNoMemcached
 class CustomPicklerMemcacheTest(MemcacheTest):
+    # JSON needs unicode strings
+    BIG_VALUE = MemcacheTest.BIG_VALUE.decode('ascii')
+    ENDMARK = 'ENDMARK'
+
     def setUpClient(self):
-        import json
+        import json, codecs
+        class JsonPickler:
+            @staticmethod
+            def dump(obj, file, protocol):
+                writer = codecs.lookup('utf8').streamwriter(file)
+                return json.dump(obj, writer)
+            @staticmethod
+            def dumps(obj, protocol):
+                return json.dumps(obj).encode('utf8')
+            @staticmethod
+            def load(file):
+                reader = codecs.lookup('utf8').streamreader(file)
+                return json.load(reader)
+            @staticmethod
+            def loads(obj):
+                return json.loads(obj.decode('utf8'))
         return super(CustomPicklerMemcacheTest, self).setUpClient(
-            pickler = json)
+            pickler = JsonPickler, compress = False)
 
     def testObjectKey(self):
         # This should fail
         client = self.client
         k = K()
         self.assertRaises(TypeError, client.put, k, 15, 10)
+
+    # JSON as key pickler doesn't support non-ascii byte strings
+    testUTFStringKey = None
+    testLongUTFStringKey = None
 
 @skipIfNoMemcached
 class CustomClientPicklerMemcacheTest(MemcacheTest):
@@ -391,6 +421,7 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
+        self.client.client.disconnect_all()
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -428,6 +459,7 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
         # Manually clear memcached
         FastMemcacheTest.tearDown(self)
         self.client2.client.flush_all()
+        self.client2.client.disconnect_all()
 
     def testFailFast(self):
         client = self.client
@@ -452,5 +484,6 @@ class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
+        self.rclient.client.disconnect_all()
 
     testStats = None

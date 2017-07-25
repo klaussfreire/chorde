@@ -79,3 +79,7 @@ else:
     itervalues = _operator.methodcaller('itervalues')
     iteritems = _operator.methodcaller('iteritems')
 
+def safeascii(x, isinstance = isinstance, unicode = unicode):
+    if isinstance(x, unicode):
+        x = x.encode("ascii")
+    return x
