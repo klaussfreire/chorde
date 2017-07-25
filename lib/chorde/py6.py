@@ -23,6 +23,17 @@ except NameError:
     long = int
 
 try:
+    buffer
+except NameError:
+    def buffer(x, offset=None, size=None):
+        x = memoryview(x)
+        if offset is not None:
+            x = x[offset:]
+        if size is not None:
+            x = x[:size]
+        return x
+
+try:
     from functools import izip, imap
     lzip = zip
     lmap = map

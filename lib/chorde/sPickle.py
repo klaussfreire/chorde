@@ -149,7 +149,7 @@ class SecureUnpickler(object):
         data = self.file.read(datalen)
         ref_md.update(data)
         
-        ref_md = ref_md.hexdigest()
+        ref_md = ref_md.hexdigest().encode("ascii")
         if ref_md != md:
             raise ValueError("MAC mismatch unpickling")
         

@@ -376,7 +376,7 @@ class MemcachedStoreClient(memcache.Client):
     
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                server : b"get " + b" ".join(server_keys[server]) + b"\r\n"
                 for server in server_keys
             })
             dead_servers = unsent.keys()
@@ -424,7 +424,7 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if not line or line == 'END':
+                                if not line or line == b'END':
                                     sockets.pop(sock)
                                     poller.unregister(sock)
                                     break
@@ -495,17 +495,18 @@ class MemcachedStoreClient(memcache.Client):
             server_commands = {}
             for server in server_keys:
                 bigcmd = []
-                write = bigcmd.append
+                write = bigcmd.extend
                 for key in server_keys[server]: # These are mangled keys
                     store_info = self._val_to_store_info(
                             mapping[prefixed_to_orig_key[key]],
                             min_compress_len)
                     if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
-                                time, store_info[1], store_info[2]))
+                        write([b"set ", key,
+                            (" %d %d %d\r\n" % (store_info[0], time, store_info[1])).encode("ascii"),
+                            store_info[2], b"\r\n"])
                     else:
                         notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
+                server_commands[server] = b''.join(bigcmd)
             unsent = self._send_multi(server_commands)
             dead_servers = unsent.keys()
             del unsent, server_commands
@@ -555,14 +556,14 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if line == 'STORED':
+                                if line == b'STORED':
                                     state[1] -= 1
                                     if state[1] <= 0:
                                         sockets.pop(sock)
                                         poller.unregister(sock)
                                         break
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -671,7 +672,7 @@ class MemcachedStoreClient(memcache.Client):
     
             # send out all requests on each server before reading anything
             unsent = self._send_multi({
-                server : "get %s\r\n" % (" ".join(server_keys[server]),)
+                server : b"get " + b" ".join(server_keys[server]) + b"\r\n"
                 for server in server_keys
             })
             dead_servers = unsent.keys()
@@ -706,7 +707,7 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if not line or line == 'END':
+                                if not line or line == b'END':
                                     sockets.pop(sock)
                                     break
                                 else:
@@ -775,17 +776,18 @@ class MemcachedStoreClient(memcache.Client):
             server_commands = {}
             for server in server_keys:
                 bigcmd = []
-                write = bigcmd.append
+                write = bigcmd.extend
                 for key in server_keys[server]: # These are mangled keys
                     store_info = self._val_to_store_info(
                             mapping[prefixed_to_orig_key[key]],
                             min_compress_len)
                     if store_info:
-                        write("set %s %d %d %d\r\n%s\r\n" % (key, store_info[0],
-                                time, store_info[1], store_info[2]))
+                        write([b"set ", key,
+                            (b" %d %d %d\r\n" % (store_info[0], time, store_info[1])).encode("ascii"),
+                            store_info[2], b"\r\n"])
                     else:
                         notstored.append(prefixed_to_orig_key[key])
-                server_commands[server] = ''.join(bigcmd)
+                server_commands[server] = b''.join(bigcmd)
             unsent = self._send_multi(server_commands)
             dead_servers = unsent.keys()
             del unsent, server_commands
@@ -820,13 +822,13 @@ class MemcachedStoreClient(memcache.Client):
                         try:
                             while 1:
                                 line = server.readline()
-                                if line == 'STORED':
+                                if line == b'STORED':
                                     state[1] -= 1
                                     if state[1] <= 0:
                                         sockets.pop(sock)
                                         break
                                 # Go on unless there's no more lines to read
-                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
+                                if not (server.buffer and (len(server.buffer) > max_blocking_buffer or b'\r\n' in server.buffer)):
                                     break
                         except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
@@ -1002,9 +1004,9 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # and shorten it by truncating and perhaps appending an MD5 hash.
             exact = False
             try:
-                key = b"H%s#%s" % (hexlify(hashlib.md5(key).digest()),key[:self.max_backing_key_length-48])
+                key = b"".join([b"H", hexlify(hashlib.md5(key).digest()), b"#", key[:self.max_backing_key_length-48]])
             except ImportError:
-                key = b"H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
+                key = b"".join([b"H", ("%08X" % hash(key)).encode("ascii"), b"#", key[:self.max_backing_key_length-16]])
         
         if not key:
             key = b"#NULL#"
@@ -1095,7 +1097,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                  or npages != ref_npages 
                  or not (0 <= page < ref_npages) 
                  or data[page] is not None
-                 or not isinstance(pagedata,str) ):
+                 or not isinstance(pagedata,bytes) ):
                 raise ValueError("Inconsistent data in cache")
             data[page] = pagedata
         
@@ -1109,7 +1111,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             pages.clear()
         
         # join pages, decompress, unpickle
-        data = ''.join(data)
+        data = b''.join(data)
 
         if self.encoding_cache is not None:
             # Check against the cached encoding just in case it's the same
@@ -1192,7 +1194,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             return default, -1
         # Check failfast cache, before making a huge effort decoding for not
         # When there's a key collision, this avoids misses being expensive
-        elif self._failfast_cache.get(key) > (now - self.failfast_time):
+        elif self._failfast_cache.get(key, 0) > (now - self.failfast_time):
             return default, -1
         
         if npages > 1:
@@ -1400,7 +1402,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
                     npages = first_page[0]
                     page_prefix = self._page_prefix(first_page, short_key)
                     for page in xrange(1, npages):
-                        if not self.client.append("%s%d" % (page_prefix,page),""):
+                        if not self.client.append(page_prefix + ("%d" % page).encode("ascii"),b""):
                             return False
                     return True
                 else:
@@ -1669,7 +1671,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             # Not in queue, get from memcached, and decode
             if not encoded:
                 # Check failfast cache, before contacting the remote client
-                if self._failfast_cache is not None and self._failfast_cache.get(key) > (now - self.failfast_time):
+                if self._failfast_cache is not None and self._failfast_cache.get(key, 0) > (now - self.failfast_time):
                     return default, -1
 
                 raw_key = key
@@ -1781,7 +1783,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
             return True
 
         # Check failfast cache, before contacting the remote client
-        if self._failfast_cache is not None and self._failfast_cache.get(key) > (time.time() - self.failfast_time):
+        if self._failfast_cache is not None and self._failfast_cache.get(key, 0) > (time.time() - self.failfast_time):
             return False
         
         # Else exploit the fact that append returns True on success (the key exists)
