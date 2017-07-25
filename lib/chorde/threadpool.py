@@ -8,7 +8,10 @@ import logging
 import multiprocessing
 import os
 import sys
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 import threading
 import time
 import weakref

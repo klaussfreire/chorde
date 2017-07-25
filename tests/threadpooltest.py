@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import collections
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 from threading import Event, Thread
 import multiprocessing.pool 
 import time

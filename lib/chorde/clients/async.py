@@ -5,7 +5,10 @@ import time
 import weakref
 import functools
 import itertools
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 import threading
 import operator
 import sys

@@ -5,7 +5,10 @@ import zmq
 import logging
 import Queue
 import threading
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 import random
 from abc import ABCMeta, abstractmethod
 
