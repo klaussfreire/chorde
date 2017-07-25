@@ -7,6 +7,7 @@ import time
 import logging
 import random
 import pydoc
+import base64
 
 from .clients import base, async, tiered
 
@@ -65,13 +66,19 @@ def _make_namespace(f, salt = None):
         fpath = ''
     
     try:
+        if isinstance(fpath, unicode):
+            fpath = fpath.encode("utf8")
         body_digest = hashlib.md5(fpath)
         if salt:
+            if isinstance(salt, unicode):
+                salt = salt.encode("utf8")
             body_digest.update(salt)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
+        return "%s.%s#%s" % (mname,fname,base64.b64encode(body_digest.digest())
+            .decode("ascii").strip("=\n").encode("ascii"))
     except:
+        raise
         return repr(f)
 
 def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
