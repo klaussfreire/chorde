@@ -305,7 +305,7 @@ class MemcachedStoreClient(memcache.Client):
                         sent = sock.send(buf, sendflags)
                     except socket_error_timeout:
                         continue
-                    except socket_error, msg:
+                    except socket_error as msg:
                         if mark_dead:
                             if isinstance(msg, tuple):
                                 msg = msg[1]
@@ -426,7 +426,7 @@ class MemcachedStoreClient(memcache.Client):
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
-                        except (memcache._Error, socket.error), msg:
+                        except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
                             sockets.pop(sock)
@@ -553,7 +553,7 @@ class MemcachedStoreClient(memcache.Client):
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
-                        except (memcache._Error, socket.error), msg:
+                        except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
                             pending_keys = state[1]
@@ -598,7 +598,7 @@ class MemcachedStoreClient(memcache.Client):
                         sent = sock.send(buf, sendflags)
                     except socket_error_timeout:
                         continue
-                    except socket_error, msg:
+                    except socket_error as msg:
                         if mark_dead:
                             if isinstance(msg, tuple):
                                 msg = msg[1]
@@ -707,7 +707,7 @@ class MemcachedStoreClient(memcache.Client):
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
-                        except (memcache._Error, socket.error), msg:
+                        except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
                             sockets.pop(sock)
@@ -817,7 +817,7 @@ class MemcachedStoreClient(memcache.Client):
                                 # Go on unless there's no more lines to read
                                 if not (server.buffer and (len(server.buffer) > max_blocking_buffer or '\r\n' in server.buffer)):
                                     break
-                        except (memcache._Error, socket.error), msg:
+                        except (memcache._Error, socket.error) as msg:
                             if isinstance(msg, tuple): msg = msg[1]
                             server.mark_dead(msg)
                             pending_keys = state[1]
@@ -1182,7 +1182,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
         try:
             try:
                 cached_key, cached_value = self.decode_pages(pages, key)
-            except ValueError, e:
+            except ValueError as e:
                 if npages > 1 and multi_method and e.message == "Inconsistent data in cache":
                     # try again, maybe there was a write between gets
                     pages.clear()
@@ -1576,7 +1576,7 @@ class FastMemcachedClient(DynamicResolvingMemcachedClient):
                         else:
                             plan[ttl][key] = encode(key, ttl+quicknow, value)
                     break
-                except RuntimeError, e:
+                except RuntimeError as e:
                     del deletions[:]
                     del renewals[:]
                     plan.clear()
