@@ -82,6 +82,7 @@ class WaitIter:
             threading.current_thread().terminate(False)
         self.event.wait(self.timeout)
         raise StopIteration
+    __next__ = next
 
 class ThreadPool:
     """
@@ -125,7 +126,7 @@ class ThreadPool:
         self.__busyqueues = set()
         self.__busyfactors = {}
         self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
-        self.__dequeue = self.__exhausted = self.__exhausted_iter.next
+        self.__dequeue = self.__exhausted = iter_get_next(self.__exhausted_iter)
 
         self.min_batch = min_batch
         self.max_batch = max_batch
@@ -263,7 +264,7 @@ class ThreadPool:
                     else:
                         qiter = iter(q)
                         qposes.append(None)
-                    queues.append(partial(repeat, qiter.next, qprio))
+                    queues.append(partial(repeat, iter_get_next(qiter), qprio))
                 wposes = qposes
                 
                 ioffs = 0
@@ -277,7 +278,7 @@ class ThreadPool:
                         del queues[ioffs]
                 retry = can_straggle and len(iqueue) != ilen
             self.__worklen = len(iqueue)
-            self.__dequeue = iter(iqueue).next
+            self.__dequeue = iter_get_next(iter(iqueue))
             if itotal:
                 ftotal = float(itotal)
                 self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])

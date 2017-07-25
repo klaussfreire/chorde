@@ -1164,7 +1164,7 @@ class AsyncCacheProcessor(object):
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
         
-        self._tit_tat = itertools.cycle(iter((True,False))).next
+        self._tit_tat = iter_get_next(itertools.cycle(iter((True,False))))
 
         self.stats = ProcessorStats()
 

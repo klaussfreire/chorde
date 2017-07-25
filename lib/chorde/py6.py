@@ -38,6 +38,8 @@ except NameError:
 
 if _sys.version_info > (3,):
     get_function_name = _operator.attrgetter('__name__')
+    iter_get_next = _operator.attrgetter('__next__')
 else:
     get_function_name = _operator.attrgetter('func_name')
+    iter_get_next = _operator.attrgetter('next')
 
