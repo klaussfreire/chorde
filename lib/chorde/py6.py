@@ -8,6 +8,11 @@ except NameError:
     from functools import reduce
 
 try:
+    basestring
+except NameError:
+    basestring = (str, bytes)
+
+try:
     xrange
 except NameError:
     xrange = range

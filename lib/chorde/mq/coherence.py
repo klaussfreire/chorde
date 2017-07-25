@@ -16,7 +16,10 @@ from . import ipsub
 try:
     import cStringIO
 except ImportError:
-    import StringIO as cStringIO
+    try:
+        from StringIO import StringIO  # lint:ok
+    except ImportError:
+        from io import StringIO  # lint:ok
 
 from chorde.clients import CacheMissError
 from chorde.clients import inproc

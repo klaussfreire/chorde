@@ -14,7 +14,10 @@ except ImportError:
 try:
     import cStringIO
 except ImportError:
-    import StringIO as cStringIO  # lint:ok
+    try:
+        from StringIO import StringIO  # lint:ok
+    except ImportError:
+        from io import StringIO  # lint:ok
 
 __ALL__ = (
     'EVENT_INCOMING_UPDATE',

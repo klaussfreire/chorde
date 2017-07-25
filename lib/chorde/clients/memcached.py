@@ -14,6 +14,7 @@ import select
 from threading import Event, Thread, Lock
 
 from chorde.py6 import *
+import binascii
 
 from .base import BaseCacheClient, CacheMissError, NONE
 from .inproc import Cache
@@ -32,7 +33,10 @@ except ImportError:
 try:
     from cStringIO import StringIO
 except ImportError:
-    from StringIO import StringIO  # lint:ok
+    try:
+        from StringIO import StringIO  # lint:ok
+    except ImportError:
+        from io import StringIO  # lint:ok
 
 try:
     from select import poll
@@ -948,7 +952,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
 
     def shorten_key(self, key,
             tmap = ''.join('\x01' if c<33 or c == 127 else '\x00' for c in xrange(256)),
-            imap = imap,
+            imap = imap, hexlify = binascii.hexlify,
             isinstance = isinstance, basestring = basestring, unicode = unicode, ord = ord, any = any, len = len ):
         # keys cannot be anything other than strings
         exact = True
@@ -980,7 +984,7 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             # and shorten it by truncating and perhaps appending an MD5 hash.
             exact = False
             try:
-                key = "H%s#%s" % (hashlib.md5(key).digest().encode("hex"),key[:self.max_backing_key_length-48])
+                key = "H%s#%s" % (hexlify(hashlib.md5(key).digest()),key[:self.max_backing_key_length-48])
             except ImportError:
                 key = "H%08X#%s" % (hash(key), key[:self.max_backing_key_length-16])
         
