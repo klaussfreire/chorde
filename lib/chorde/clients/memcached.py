@@ -877,6 +877,13 @@ class MemcachedClient(DynamicResolvingMemcachedClient):
             raise ValueError("MemcachedClient requires a checksum key for security checks")
         if isinstance(checksum_key, unicode):
             checksum_key = checksum_key.encode("utf8")
+
+        if namespace:
+            namespace = safeascii(namespace)
+        if client_pickler_key:
+            client_pickler_key = safeascii(client_pickler_key)
+        if compress_prefix:
+            compress_prefix = safeascii(compress_prefix)
         
         self.max_backing_value_length = max_backing_value_length - 256 # 256-bytes for page header and other overhead
         self.last_seen_stamp = 0

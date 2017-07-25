@@ -404,6 +404,11 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
             namespace = "testns2",
             encoding_cache = threading.local() )
 
+    def tearDown(self):
+        super(BuiltinNamespaceMemcacheTest, self).tearDown()
+        self.bclient.client.disconnect_all()
+        self.rclient.client.disconnect_all()
+
     # We don't implement clear
     testNamespaceClear = unittest.skip("not applicable")(NamespaceWrapperTestMixIn.testNamespaceClear)
 
