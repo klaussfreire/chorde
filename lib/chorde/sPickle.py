@@ -39,7 +39,7 @@ except ImportError:
     try:
         from StringIO import StringIO  # lint:ok
     except ImportError:
-        from io import StringIO  # lint:ok
+        from io import BytesIO as StringIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
@@ -87,11 +87,10 @@ class SecurePickler(object):
         # dump to underlying pickler, then pick up the results
         self.pickler.dump(val)
         rv = self.buf.getvalue()
-        self.buf.reset()
-        self.buf.truncate()
+        self.buf.truncate(0)
         
         # compute HMAC, and prepend to output
-        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest()
+        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest().encode("ascii")
         self.file.write(binascii.hexlify(struct.pack('<L',len(rv))))
         self.file.write(md)
         self.file.write(rv)
@@ -155,13 +154,12 @@ class SecureUnpickler(object):
             raise ValueError("MAC mismatch unpickling")
         
         buf = self.buf
-        buf.reset()
+        buf.seek(0)
         buf.write(data)
         buf.truncate()
-        buf.reset()
+        buf.seek(0)
         rv = self.unpickler.load()
-        buf.reset()
-        buf.truncate()
+        buf.truncate(0)
         return rv
 
 def dump(key, obj, file, *p, **kw):

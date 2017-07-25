@@ -198,7 +198,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
             short_key,exact = client.shorten_key("bigkey2")
             client.put("bigkey2", bigval, 60)
             time.sleep(1) # let it write
-            old_index_page = client.client.get(short_key+"|0")
+            old_index_page = client.client.get(short_key+b"|0")
             old_page_prefix = client._page_prefix(old_index_page, short_key)
             client.put("bigkey2", bigval + "ENDMARK", 60)
             self.assertIsNone(client.client.get(old_page_prefix+"1"), "Not expired") # should have expired
