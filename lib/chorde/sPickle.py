@@ -26,6 +26,7 @@ checksum_algo_name = checksum_algo.__name__.replace('openssl_','')
 import hmac
 import struct
 import threading
+import binascii
 
 try:
     import cPickle
@@ -35,7 +36,10 @@ except ImportError:
 try:
     from cStringIO import StringIO
 except ImportError:
-    from StringIO import StringIO  # lint:ok
+    try:
+        from StringIO import StringIO  # lint:ok
+    except ImportError:
+        from io import BytesIO as StringIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
@@ -83,12 +87,11 @@ class SecurePickler(object):
         # dump to underlying pickler, then pick up the results
         self.pickler.dump(val)
         rv = self.buf.getvalue()
-        self.buf.reset()
-        self.buf.truncate()
+        self.buf.truncate(0)
         
         # compute HMAC, and prepend to output
-        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest()
-        self.file.write(struct.pack('<L',len(rv)).encode("hex"))
+        md = hmac.HMAC(self.checksum_key, rv, checksum_algo).hexdigest().encode("ascii")
+        self.file.write(binascii.hexlify(struct.pack('<L',len(rv))))
         self.file.write(md)
         self.file.write(rv)
 
@@ -134,11 +137,11 @@ class SecureUnpickler(object):
     def persistent_load(self, value):  # lint:ok
         self.unpickler.persistent_load = value
 
-    def load(self, headlen = len(struct.pack('<L',0).encode("hex"))):
+    def load(self, headlen = len(binascii.hexlify(struct.pack('<L',0)))):
         datalen = self.file.read(headlen)
         if not datalen:
-            raise EOFError, "Cannot read secure packet header"
-        datalen, = struct.unpack('<L', datalen.decode("hex") )
+            raise EOFError("Cannot read secure packet header")
+        datalen, = struct.unpack('<L', binascii.unhexlify(datalen))
         
         ref_md = hmac.HMAC(self.checksum_key, None, checksum_algo)
         md = self.file.read(ref_md.digest_size*2)
@@ -146,18 +149,17 @@ class SecureUnpickler(object):
         data = self.file.read(datalen)
         ref_md.update(data)
         
-        ref_md = ref_md.hexdigest()
+        ref_md = ref_md.hexdigest().encode("ascii")
         if ref_md != md:
-            raise ValueError, "MAC mismatch unpickling"
+            raise ValueError("MAC mismatch unpickling")
         
         buf = self.buf
-        buf.reset()
+        buf.seek(0)
         buf.write(data)
         buf.truncate()
-        buf.reset()
+        buf.seek(0)
         rv = self.unpickler.load()
-        buf.reset()
-        buf.truncate()
+        buf.truncate(0)
         return rv
 
 def dump(key, obj, file, *p, **kw):

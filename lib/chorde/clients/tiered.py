@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from itertools import izip, islice
+from itertools import islice
 import operator
 import logging
+
+from chorde.py6 import *
 
 from . import async
 from .base import NONE, CacheMissError, BaseCacheClient
@@ -24,11 +26,11 @@ class TieredInclusiveClient(BaseCacheClient):
 
     @property
     def capacity(self):
-        return map(operator.attrgetter('capacity'), self.clients)
+        return lmap(operator.attrgetter('capacity'), self.clients)
 
     @property
     def usage(self):
-        return map(operator.attrgetter('usage'), self.clients)
+        return lmap(operator.attrgetter('usage'), self.clients)
 
     def wait(self, key, timeout = None):
         for client in self.clients:
@@ -70,7 +72,7 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
             tiers = izip(fractions, clients)
@@ -104,7 +106,7 @@ class TieredInclusiveClient(BaseCacheClient):
             else:
                 # Cannot undefer here, it might create deadlocks.
                 # Raise error.
-                raise ValueError, "Sync first tier, cannot undefer"
+                raise ValueError("Sync first tier, cannot undefer")
         else:
             # Simple case
             tiers = izip(fractions, clients)
@@ -170,7 +172,7 @@ class TieredInclusiveClient(BaseCacheClient):
                 return rv, ttl
             else:
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default, -1
 

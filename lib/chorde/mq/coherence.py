@@ -9,12 +9,17 @@ import zmq
 import time
 import operator
 
+from chorde.py6 import *
+
 from . import ipsub
 
 try:
     import cStringIO
 except ImportError:
-    import StringIO as cStringIO
+    try:
+        from StringIO import StringIO  # lint:ok
+    except ImportError:
+        from io import StringIO  # lint:ok
 
 from chorde.clients import CacheMissError
 from chorde.clients import inproc
@@ -250,7 +255,7 @@ class CoherenceManager(object):
         Generate a new transaction id. No two reads will be the same... often.
         """
         # Iterator is atomic, no need for locks
-        return self._txid.next()
+        return next(self._txid)
 
     @_swallow_connrefused(_noop)
     def fire_deletion(self, key, timeout = None):
@@ -350,7 +355,7 @@ class CoherenceManager(object):
         group_pending = self.group_pending
         try:
             # Try iterating
-            for rv in group_pending.itervalues():
+            for rv in itervalues(group_pending):
                 if (now - rv[1]) > _REFRESH_TIMEOUT:
                     needs_refresh = True
                     break
@@ -367,7 +372,7 @@ class CoherenceManager(object):
             needs_refresh = False
             try:
                 # Try iterating
-                for k,rv in group_pending.iteritems():
+                for k,rv in iteritems(group_pending):
                     delta = now - rv[1]
                     if delta > _PENDING_TIMEOUT:
                         clean.append(k)
@@ -375,7 +380,7 @@ class CoherenceManager(object):
                         needs_refresh = True
             except RuntimeError:
                 # Bah, gotta snapshot
-                for k,rv in group_pending.items():
+                for k,rv in listitems(group_pending):
                     delta = now - rv[1]
                     if delta > _PENDING_TIMEOUT:
                         clean.append(k)
@@ -540,7 +545,7 @@ class CoherenceManager(object):
     def _on_pending(self, prefix, event, payload):
         if self.ipsub.is_broker:
             txid, keys, contact = payload
-            self.group_pending.update(itertools.izip(
+            self.group_pending.update(izip(
                 keys, itertools.repeat((txid,time.time(),contact),len(keys))))
             return True
 
@@ -628,7 +633,7 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
+            first_key = next(iter(keys))
             self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)), self.encoding, 
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
@@ -639,7 +644,7 @@ class CoherenceManager(object):
         if keys:
             if txid is None:
                 txid = self.txid
-            first_key = iter(keys).next()
+            first_key = next(iter(keys))
             self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)), self.encoding, 
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)

@@ -10,6 +10,8 @@ import tempfile
 import threading
 import operator
 
+from chorde.py6 import *
+
 try:
     import fcntl
 except ImportError:
@@ -153,7 +155,7 @@ class SharedCounterGenericBase(object):
         slot = os.getpid() % slots
         if bitmap[slot]:
             if not locked:
-                raise AssertionError, "Slot occupied"
+                raise AssertionError("Slot occupied")
             else:
                 # With a locked bitmap, we can search other slots
                 for offs in xrange(slots):
@@ -161,7 +163,7 @@ class SharedCounterGenericBase(object):
                     if not bitmap[nslot]:
                         slot = nslot
                 else:
-                    raise AssertionError, "All slots occupied"
+                    raise AssertionError("All slots occupied")
 
         self.bitmap = bitmap
         self.bitmap_slot = bitmap_slot(slot)
@@ -235,7 +237,7 @@ class SharedCounterGenericBase(object):
                 try:
                     # Fill with zeros
                     size = cls.size(slots)
-                    zeros = '\x00' * 1024
+                    zeros = b'\x00' * 1024
                     while size >= 1024:
                         os.write(tmpfileno, zeros)
                         size -= 1024
@@ -357,7 +359,10 @@ class SharedCounterGenericBase(object):
         basemap = getattr(self, 'basemap', None)
         if basemap is not None:
             basemap.flush()
-            basemap.close()
+            try:
+                basemap.close()
+            except:
+                pass
         self.bitmap = None
         self.slots = None
         self.basemap = None
