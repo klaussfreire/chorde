@@ -3,7 +3,7 @@ from . import base, inproc
 from .base import NONE, CacheMissError
 from chorde import shmemutils, sPickle, serialize
 
-from chode.py6 import safeencode, listkeys, set_tempfile_delte
+from chorde.py6 import safeencode, listkeys, set_tempfile_delte
 
 import functools
 import hashlib
