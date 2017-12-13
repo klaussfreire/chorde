@@ -3,17 +3,17 @@ import sys as _sys
 import operator as _operator
 
 try:
-    reduce
+    reduce = reduce
 except NameError:
     from functools import reduce
 
 try:
-    basestring
+    basestring = basestring
 except NameError:
     basestring = (str, bytes)
 
 try:
-    xrange
+    xrange = xrange
 except NameError:
     xrange = range
 
@@ -23,7 +23,7 @@ except NameError:
     long = int
 
 try:
-    buffer
+    buffer = buffer
     buffertype = buffer
 except NameError:
     def buffer(x, offset=None, size=None):
@@ -75,6 +75,7 @@ else:
     get_function_name = _operator.attrgetter('func_name')
     iter_get_next = _operator.attrgetter('next')
     lfilter = filter
+    unicode = unicode
     listkeys = _operator.methodcaller('keys')
     listvalues = _operator.methodcaller('values')
     listitems = _operator.methodcaller('items')
