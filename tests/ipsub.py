@@ -5,6 +5,8 @@ import time
 import unittest
 import logging
 
+from chorde.py6 import *
+
 skipIfUnsupported = lambda c : c
 
 try:

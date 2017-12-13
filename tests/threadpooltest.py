@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 import collections
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 from threading import Event, Thread
 import multiprocessing.pool
 import time
 import unittest
+
+from chorde.py6 import *
 
 from chorde.threadpool import ThreadPool
 
@@ -139,7 +144,7 @@ class ThreadpoolTest(TestCase):
         for t in threads:
             t.join()
         self.join_continue(self.pool, 60)
-        total_counts = self.pool.apply(sum, (counts.itervalues(),))
+        total_counts = self.pool.apply(sum, (itervalues(counts),))
         self.assertEqual(total_counts, N*M)
 
 class ThreadpoolSubqueueWrapperTest(ThreadpoolTest):
@@ -202,7 +207,7 @@ class MultiQueueTest(TestCase):
         for t in threads:
             t.join()
         t0 = time.time()
-        self.pool.apply(sum, (counts.itervalues(),), queue = "Johnny")
+        self.pool.apply(sum, (itervalues(counts),), queue = "Johnny")
         t1 = time.time()
         self.assertLess(t1-t0, 0.025)
 

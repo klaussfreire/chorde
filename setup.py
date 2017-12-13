@@ -6,7 +6,7 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
-if sys.subversion[0] == 'PyPy':
+if getattr(sys, 'subversion', [getattr(sys, 'implementation', None)])[0] == 'PyPy':
     # Even though pypy may have Pyrex or Cython, cython LRU isn't compatible with cpyext
     no_pyrex = True
 else:

@@ -5,6 +5,8 @@ import time
 import socket
 import threading
 
+from chorde.py6 import *
+
 def is_ip4(x):
     try:
         socket.inet_aton(x)
@@ -53,7 +55,7 @@ def hosts_dnsquery(host, typ, hostsfile = "/etc/hosts"):
                         l = l.split('#',1)[0]
                     l = l.strip()
                     if l:
-                        parts = filter(bool, [ x.strip() for x in l.split() ])
+                        parts = lfilter(bool, [ x.strip() for x in l.split() ])
                         if host in parts:
                             if typ == 'A':
                                 if is_ip4(parts[0]):

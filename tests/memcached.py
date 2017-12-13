@@ -2,6 +2,7 @@
 import unittest
 import time
 import os
+import base64
 from .clientbase import CacheClientTestMixIn, NamespaceWrapperTestMixIn, CacheMissError
 from .base import TestCase
 
@@ -55,6 +56,7 @@ class MemcacheStoreTest(TestCase):
             checksum_key = "test",
             encoding_cache = threading.local() )
         self.assertRaises(CacheMissError, client.get, 4)
+        client.disconnect()
 
     def testConsistentHashing(self):
         from chorde.clients.memcached import MemcachedClient
@@ -74,12 +76,15 @@ class MemcacheStoreTest(TestCase):
             for s in c.client.servers:
                 s.connect = lambda *p, **kw : True
 
-        s1 = c1.client._get_server("127.0.0.3:11211")[0]
-        s2 = c2.client._get_server("127.0.0.3:11211")[0]
-        s3 = c3.client._get_server("127.0.0.3:11211")[0]
+        s1 = c1.client._get_server(b"127.0.0.3:11211")[0]
+        s2 = c2.client._get_server(b"127.0.0.3:11211")[0]
+        s3 = c3.client._get_server(b"127.0.0.3:11211")[0]
         self.assertEqual(s1.address, c1.client.servers[-1].address)
         self.assertEqual(s2.address, c2.client.servers[-1].address)
         self.assertEqual(s3.address, c3.client.servers[-1].address)
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
 
 @skipIfNoMemcached
 class MemcacheTest(CacheClientTestMixIn, TestCase):
@@ -88,7 +93,8 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     meaningful_capacity = False # controlled externally so it may not be consistent for testing purposes
 
     # Big uncompressible (but ascii-compatible) value
-    BIG_VALUE = os.urandom(4 << 20).encode("base64")
+    BIG_VALUE = base64.b64encode(os.urandom(4 << 20))
+    ENDMARK = b'ENDMARK'
 
     def setUpClient(self, **kwargs):
         from chorde.clients.memcached import MemcachedClient
@@ -102,6 +108,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
+        self.client.disconnect()
 
     def testSucceedFast(self):
         client = self.client
@@ -130,7 +137,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongStringKey(self):
         client = self.client
         k = "abracadabra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -143,7 +150,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongUTFStringKey(self):
         client = self.client
         k = u"ábracadíbra".encode("utf8")
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -156,7 +163,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testLongUnicodeStringKey(self):
         client = self.client
         k = u"ábracadíbra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra2", 10)
         self.assertEqual(client.get(k), "patadecabra2")
 
@@ -169,7 +176,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
     def testSpacedLongStringKey(self):
         client = self.client
         k = "abra cadabra"
-        k = k * (getattr(self.client, 'max_backing_key_length', 2048) / len(k) + 1)
+        k = k * (getattr(self.client, 'max_backing_key_length', 2048) // len(k) + 1)
         client.put(k, "patadecabra4", 10)
         self.assertEqual(client.get(k), "patadecabra4")
 
@@ -197,11 +204,11 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
             short_key,exact = client.shorten_key("bigkey2")
             client.put("bigkey2", bigval, 60)
             time.sleep(1) # let it write
-            old_index_page = client.client.get(short_key+"|0")
+            old_index_page = client.client.get(short_key+b"|0")
             old_page_prefix = client._page_prefix(old_index_page, short_key)
-            client.put("bigkey2", bigval + "ENDMARK", 60)
-            self.assertIsNone(client.client.get(old_page_prefix+"1"), "Not expired") # should have expired
-            self.assertEqual(client.get("bigkey2"), bigval + "ENDMARK")
+            client.put("bigkey2", bigval + self.ENDMARK, 60)
+            self.assertIsNone(client.client.get(old_page_prefix+b"1"), "Not expired") # should have expired
+            self.assertEqual(client.get("bigkey2"), bigval + self.ENDMARK)
 
     def testRenewBigValue(self):
         bigval = self.BIG_VALUE
@@ -247,7 +254,7 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put("bigkey1", bigval, 60)
         shorten_key, _ = client.shorten_key('bigkey1')
-        client.client.delete(shorten_key + '|0')
+        client.client.delete(shorten_key + b'|0')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -257,9 +264,9 @@ class MemcacheTest(CacheClientTestMixIn, TestCase):
         client = self.client
         client.put("bigkey1", bigval, 60)
         shorten_key, _ = client.shorten_key('bigkey1')
-        page = client.client.get(shorten_key + '|0')
+        page = client.client.get(shorten_key + b'|0')
         page_prefix = client._page_prefix(page, shorten_key)
-        client.client.delete(page_prefix + '1')
+        client.client.delete(page_prefix + b'1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -285,6 +292,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
+        self.rclient.disconnect()
 
     testStats = unittest.skip("not applicable")(MemcacheTest.testStats)
 
@@ -296,7 +304,7 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         decorated_key = client.key_decorator('bigkey1')
         shorten_key, _ = client.client.shorten_key(decorated_key)
 
-        client.client.client.delete(shorten_key + '|0')
+        client.client.client.delete(shorten_key + b'|0')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -308,10 +316,10 @@ class NamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
         client.put("bigkey1", bigval, 60)
         decorated_key = client.key_decorator('bigkey1')
         shorten_key, _ = client.client.shorten_key(decorated_key)
-        page = client.client.client.get(shorten_key + '|0')
+        page = client.client.client.get(shorten_key + b'|0')
         page_prefix = client.client._page_prefix(page, shorten_key)
 
-        client.client.client.delete(page_prefix + '1')
+        client.client.client.delete(page_prefix + b'1')
 
         with self.assertRaises(CacheMissError):
             client.get("bigkey1")
@@ -324,16 +332,39 @@ class UncompressedMemcacheTest(MemcacheTest):
 
 @skipIfNoMemcached
 class CustomPicklerMemcacheTest(MemcacheTest):
+    # JSON needs unicode strings
+    BIG_VALUE = MemcacheTest.BIG_VALUE.decode('ascii')
+    ENDMARK = 'ENDMARK'
+
     def setUpClient(self):
-        import json
+        import json, codecs
+        class JsonPickler:
+            @staticmethod
+            def dump(obj, file, protocol):
+                writer = codecs.lookup('utf8').streamwriter(file)
+                return json.dump(obj, writer)
+            @staticmethod
+            def dumps(obj, protocol):
+                return json.dumps(obj).encode('utf8')
+            @staticmethod
+            def load(file):
+                reader = codecs.lookup('utf8').streamreader(file)
+                return json.load(reader)
+            @staticmethod
+            def loads(obj):
+                return json.loads(obj.decode('utf8'))
         return super(CustomPicklerMemcacheTest, self).setUpClient(
-            pickler = json)
+            pickler = JsonPickler, compress = False)
 
     def testObjectKey(self):
         # This should fail
         client = self.client
         k = K()
         self.assertRaises(TypeError, client.put, k, 15, 10)
+
+    # JSON as key pickler doesn't support non-ascii byte strings
+    testUTFStringKey = None
+    testLongUTFStringKey = None
 
 @skipIfNoMemcached
 class CustomClientPicklerMemcacheTest(MemcacheTest):
@@ -373,6 +404,11 @@ class BuiltinNamespaceMemcacheTest(NamespaceWrapperTestMixIn, MemcacheTest):
             namespace = "testns2",
             encoding_cache = threading.local() )
 
+    def tearDown(self):
+        super(BuiltinNamespaceMemcacheTest, self).tearDown()
+        self.bclient.disconnect()
+        self.rclient.disconnect()
+
     # We don't implement clear
     testNamespaceClear = unittest.skip("not applicable")(NamespaceWrapperTestMixIn.testNamespaceClear)
 
@@ -390,6 +426,8 @@ class FastMemcacheTest(CacheClientTestMixIn, TestCase):
     def tearDown(self):
         # Manually clear memcached
         self.client.client.flush_all()
+        self.client.disconnect()
+        time.sleep(0.05)
 
     testClear = unittest.expectedFailure(CacheClientTestMixIn.testClear)
     testPurge = unittest.expectedFailure(CacheClientTestMixIn.testPurge)
@@ -433,8 +471,9 @@ class FastFailFastMemcacheTest(FastMemcacheTest):
 
     def tearDown(self):
         # Manually clear memcached
-        FastMemcacheTest.tearDown(self)
         self.client2.client.flush_all()
+        self.client2.disconnect()
+        FastMemcacheTest.tearDown(self)
 
     def testFailFast(self):
         client = self.client
@@ -459,5 +498,7 @@ class NamespaceFastMemcacheTest(NamespaceWrapperTestMixIn, FastMemcacheTest):
     def tearDown(self):
         # Manually clear memcached
         self.rclient.client.flush_all()
+        self.rclient.disconnect()
+        time.sleep(0.05)
 
     testStats = None

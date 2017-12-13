@@ -1,4 +1,5 @@
 """Efficient (O(log n) amortized update) Least-Recently-Used cache"""
+from chorde.py6 import *
 
 CacheMissError = KeyError
 
@@ -89,7 +90,7 @@ class LRUCache(object):
             swn.index = ix
 
     def iterkeys(self):
-        return self.emap.iterkeys()
+        return iterkeys(self.emap)
 
     def itervalues(self):
         return LRUCacheValuesIterator(self)
@@ -98,7 +99,7 @@ class LRUCache(object):
         return LRUCacheItemsIterator(self)
 
     def keys(self):
-        return self.emap.keys()
+        return listkeys(self.emap)
 
     def values(self):
         return list(self.itervalues())
@@ -198,7 +199,7 @@ class LRUCache(object):
 
     def update(self, iterOrDict):
         if isinstance(iterOrDict, dict) or isinstance(iterOrDict, LRUCache):
-            for k,v in iterOrDict.iteritems():
+            for k,v in iteritems(iterOrDict):
                 self[k] = v
         else:
             for k,v in iterOrDict:

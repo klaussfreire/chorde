@@ -2,13 +2,16 @@
 from functools import wraps as _wraps
 from functools import partial
 import weakref
-import md5
+import hashlib
 import time
 import logging
 import random
 import pydoc
+import base64
 
 from .clients import base, async, tiered
+
+from chorde.py6 import *
 
 try:
     from .mq import coherence
@@ -39,7 +42,7 @@ def wraps(wrapped):
         wrapper = w(wrapper)
         wrapper.__doc__ = "\n".join(
             pydoc.render_doc(wrapped, 'cached %s:').split('\n', 4)[:3]
-            + filter(bool, [wrapper.__doc__]))
+            + lfilter(bool, [wrapper.__doc__]))
         return wrapper
     return decor
 
@@ -63,13 +66,18 @@ def _make_namespace(f, salt = None):
         fpath = ''
 
     try:
-        body_digest = md5.md5(fpath)
+        if isinstance(fpath, unicode):
+            fpath = fpath.encode("utf8")
+        body_digest = hashlib.md5(fpath)
         if salt:
+            if isinstance(salt, unicode):
+                salt = salt.encode("utf8")
             body_digest.update(salt)
         if fcode:
             body_digest.update(getattr(fcode, 'co_code', ''))
-        return "%s.%s#%s" % (mname,fname,body_digest.digest().encode("base64").strip("=\n"))
+        return "%s.%s#%s" % (mname,fname,base64.b64encode(body_digest.digest()).strip(b"=\n"))
     except:
+        raise
         return repr(f)
 
 def _simple_put_deferred(future, client, f, key, ttl, *p, **kw):
@@ -976,7 +984,7 @@ def cached(client, ttl,
                 stats.misses += 1
 
             if rv is __NONE:
-                raise CacheMissError, callkey
+                raise CacheMissError(callkey)
             else:
                 return rv
         if decorate is not None:

@@ -5,6 +5,8 @@ from chorde.clients.base import SyncAdapter, ReadWriteSyncAdapter, NamespaceWrap
 
 import time
 
+from chorde.py6 import *
+
 class CacheClientTestMixIn:
     capacity_means_entries = True
     is_lru = True

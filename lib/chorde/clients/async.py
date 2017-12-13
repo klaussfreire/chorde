@@ -5,10 +5,15 @@ import time
 import weakref
 import functools
 import itertools
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 import threading
 import operator
 import sys
+
+from chorde.py6 import itervalues, viewkeys
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -343,7 +348,7 @@ class AsyncCacheWriterPool:
     @serialize
     def clearqueue(self):
         delayed = []
-        for entry in self.queueset.itervalues():
+        for entry in itervalues(self.queueset):
             value = entry[0]
             if hasattr(value, 'undefer') and hasattr(value, 'future'):
                 future = getattr(value, 'future', None)
@@ -556,7 +561,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
 
     def start(self):
         if self.writer is not None:
-            raise AssertionError, "Starting AsyncCacheClient twice"
+            raise AssertionError("Starting AsyncCacheClient twice")
         self.assert_started()
 
     def stop(self, abort_tasks=False):
@@ -619,7 +624,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 if value is _DELETE:
                     # Deletion means a miss... right?
                     if default is NONE:
-                        raise CacheMissError, key
+                        raise CacheMissError(key)
                     else:
                         return default, -1
                 elif value is _EXPIRE:
@@ -637,7 +642,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             if writer._contains(_CLEAR):
                 # Well,
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default, -1
 
@@ -646,7 +651,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
         if ettl is not None:
             ttl = ettl
         if value is NONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return value, ttl
 
@@ -664,7 +669,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
                 if value is _DELETE or value is _EXPIRE:
                     # Deletion means a miss... right?
                     if default is NONE:
-                        raise CacheMissError, key
+                        raise CacheMissError(key)
                     else:
                         return default
                 elif value is _RENEW and (ttl_skip is None or ttl >= ttl_skip):
@@ -680,7 +685,7 @@ class AsyncWriteCacheClient(BaseCacheClient):
             if writer._contains(_CLEAR):
                 # Well,
                 if default is NONE:
-                    raise CacheMissError, key
+                    raise CacheMissError(key)
                 else:
                     return default
 
@@ -830,6 +835,9 @@ except ImportError:
         "explicit synchronization. Decreased performance will be noticeable")
     del warnings
 
+    from six import reraise
+
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('value',)
 
@@ -839,7 +847,7 @@ except ImportError:
         def reraise(self):
             exc = self.value
             del self.value
-            raise exc[0], exc[1], exc[2]
+            reraise(exc[0], exc[1], exc[2])
 
     class Future(object):  # lint:ok
         __slots__ = (
@@ -1111,7 +1119,7 @@ except ImportError:
             if hasattr(self, '_value'):
                 value = self._value
                 if isinstance(value, ExceptionWrapper):
-                    raise value.value[0], value.value[1], value.value[2]
+                    reraise(value.value[0], value.value[1], value.value[2])
                 elif value is CacheMissError:
                     raise CacheMissError
                 else:
@@ -1164,7 +1172,7 @@ except ImportError:
                     return None
                 except CancelledError:
                     raise
-                except Exception,e:
+                except Exception as e:
                     return e
 
 
@@ -1179,7 +1187,7 @@ def makeFutureWrapper(base):
         def __init__(self, wrapped):
             self.__wrapped = wrapped
 
-        for name, fn in vars(base).iteritems():
+        for name, fn in vars(base).items():
             if not name.startswith('__') and callable(fn):
                 def mkf(name, fn):
                     @functools.wraps(fn)
@@ -1296,7 +1304,7 @@ class AsyncCacheProcessor(object):
         self.cleanup_tasks = []
         self.cleanup_cycles = cleanup_cycles
 
-        self._tit_tat = itertools.cycle(iter((True,False))).next
+        self._tit_tat = iter_get_next(itertools.cycle(iter((True,False))))
 
         self.stats = ProcessorStats()
 
@@ -1438,7 +1446,7 @@ class AsyncCacheProcessor(object):
         return WrappedCacheProcessor(self, client)
 
     def getTtl(self, key, default = NONE, **kw):
-        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
+        if not kw or not (viewkeys(kw) - COALESCE_IGNORE_KWARGS):
             if default is NONE:
                 ckey = key
             else:
@@ -1449,7 +1457,7 @@ class AsyncCacheProcessor(object):
             self.coalesce_getTtl, ckey)
 
     def get(self, key, default = NONE, **kw):
-        if not kw or not (kw.viewkeys() - COALESCE_IGNORE_KWARGS):
+        if not kw or not (viewkeys(kw) - COALESCE_IGNORE_KWARGS):
             if default is NONE:
                 ckey = key
             else:

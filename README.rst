@@ -5,6 +5,7 @@ Dependencies:
 * python-memcached *(for MemcachedClient)*
 * pyzmq < 14 *(for coherence support)*
 * dnspython  *(for dynamic dns-based load-balancing of MemcachedClient)*
+* six
 * cython *(for optimizations in InprocCacheClient)*
 
 Optional features
@@ -16,6 +17,14 @@ When declaring dependencies in your project, you can reference the following opt
 * shmem *(shared memory utils, needed for optimized files cache clients)*
 * memcache
 * elasticache
+
+Python 3 support
+================
+
+Python 3 support requires Python 3.4 at least, and it is currently experimental. Some features may not work,
+or work unreliably.
+
+Known unreliable modules in Python 3 include coherence, and in general zmq-related support.
 
 Basic Usage:
 ============

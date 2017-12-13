@@ -3,6 +3,8 @@ import time
 import threading
 import weakref
 
+from chorde.py6 import get_function_name, iteritems, iterkeys, listkeys
+
 from . import base
 
 try:
@@ -56,8 +58,8 @@ def cacheStats():
 
     with _caches_mutex:
         rv = {}
-        for cache in _caches.iterkeys():
-            fname = cache.func_name
+        for cache in iterkeys(_caches):
+            fname = get_function_name(cache)
 
             # Sometimes, functions are different but named the same. Usually
             # they're related, so we aggregate those stats.
@@ -68,7 +70,7 @@ def cacheStats():
 
 def cachePurge(timeout = 0, sleeptime = None):
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
 
     for cache in caches:
         if sleeptime is not None:
@@ -82,7 +84,8 @@ def cacheClear():
     >>> from chorde.decorators import cached
     >>> from chorde.clients.inproc import cacheClear, InprocCacheClient
     >>> import itertools
-    >>> random = itertools.cycle(iter((0.9560342718892494, 0.9478274870593494, 2, 3, 4, 5, 6, 7, 8))).next
+    >>> from chorde.py6 import iter_get_next
+    >>> random = iter_get_next(itertools.cycle(iter((0.9560342718892494, 0.9478274870593494, 2, 3, 4, 5, 6, 7, 8))))
     >>> @cached(InprocCacheClient(1000), ttl = 6000)
     ... def f():
     ...     return random()
@@ -111,7 +114,7 @@ def cacheClear():
     """
 
     with _caches_mutex:
-        caches = _caches.keys()
+        caches = listkeys(_caches)
 
     for cache in caches:
         cache.clear()
@@ -209,9 +212,14 @@ class InprocCacheClient(base.BaseCacheClient):
         if rv is not baseNONE:
             rv, ttl = rv
             ttl = ttl - time()
-            return rv, ttl
+            if ttl_skip is None or ttl >= ttl_skip:
+                return rv, ttl
+            elif default is baseNONE:
+                raise CacheMissError(key)
+            else:
+                return default, -1
         elif default is baseNONE:
-            raise CacheMissError, key
+            raise CacheMissError(key)
         else:
             return default, -1
 
@@ -225,7 +233,7 @@ class InprocCacheClient(base.BaseCacheClient):
         curtime = time.time() - timeout
         try:
             deletions_append = deletions.append
-            for k, (v, timestamp) in cache.iteritems():
+            for k, (v, timestamp) in iteritems(cache):
                 if timestamp < curtime:
                     deletions_append(k)
         except RuntimeError:
@@ -235,7 +243,7 @@ class InprocCacheClient(base.BaseCacheClient):
             del deletions[:]
             cache_get = cache.get
             deletions_append = deletions.append
-            for k in cache.keys():
+            for k in listkeys(cache):
                 v = cache_get(v)
                 if v is not None:
                     v, timestamp = v

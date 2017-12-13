@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+
 import collections
 import functools
 import itertools
@@ -6,12 +8,17 @@ import logging
 import multiprocessing
 import os
 import sys
-import thread
+try:
+    import thread
+except ImportError:
+    import _thread as thread  # lint:ok
 import threading
 import time
 import weakref
 
-import worker
+from . import worker
+
+from chorde.py6 import *
 
 class TimeoutError(Exception):
     pass
@@ -49,8 +56,10 @@ class WorkerThread(threading.Thread):
             self.join()
 
 try:
-    from clients._async import ExceptionWrapper
+    from .clients._async import ExceptionWrapper
 except ImportError:
+    from six import reraise
+
     class ExceptionWrapper(object):  # lint:ok
         __slots__ = ('exc',)
 
@@ -60,7 +69,7 @@ except ImportError:
         def reraise(self):
             exc = self.exc
             del self.exc
-            raise exc[0], exc[1], exc[2]
+            reraise(exc[0], exc[1], exc[2])
 
 class WaitIter:
     def __init__(self, event, queues, timeout = 5):
@@ -75,6 +84,7 @@ class WaitIter:
             threading.current_thread().terminate(False)
         self.event.wait(self.timeout)
         raise StopIteration
+    __next__ = next
 
 class ThreadPool:
     """
@@ -118,7 +128,7 @@ class ThreadPool:
         self.__busyqueues = set()
         self.__busyfactors = {}
         self.__exhausted_iter = WaitIter(self.__not_empty, self.queues)
-        self.__dequeue = self.__exhausted = self.__exhausted_iter.next
+        self.__dequeue = self.__exhausted = iter_get_next(self.__exhausted_iter)
 
         self.min_batch = min_batch
         self.max_batch = max_batch
@@ -162,7 +172,7 @@ class ThreadPool:
         pget = queue_slices.get
         ppop = queue_slices.pop
         qprio = self.queue_weights.get
-        qnames = self.queues.keys()
+        qnames = listkeys(self.queues)
         wqueues = []
         wprios = []
         wposes = []
@@ -186,8 +196,8 @@ class ThreadPool:
                 q = qget(qname)
                 qpos = pget(qname,0)
                 prio = qprio(qname,1)
-                margin = max(prio,min_batch)
-                batch = qslots * prio
+                margin = int(max(prio,min_batch))
+                batch = int(max(1, qslots * prio))
                 if batch >= (len(q) - margin - qpos):
                     #print "move %s" % (qname,)
                     q = qpop(qname)
@@ -234,7 +244,7 @@ class ThreadPool:
             iappend = iqueue.append
             islice = itertools.islice
             cycle = itertools.cycle
-            izip = itertools.izip
+            izip_ = izip
             repeat = itertools.repeat
             partial = functools.partial
             retry = True
@@ -246,7 +256,7 @@ class ThreadPool:
 
                 queues = []
                 qposes = []
-                for q,qprio,wpos in izip(wqueues, wprios, wposes):
+                for q,qprio,wpos in izip_(wqueues, wprios, wposes):
                     if wpos is not None:
                         # must slice to make sure we take a stable snapshot of the list
                         # we'll process stragglers on the next iteration
@@ -256,7 +266,7 @@ class ThreadPool:
                     else:
                         qiter = iter(q)
                         qposes.append(None)
-                    queues.append(partial(repeat, qiter.next, qprio))
+                    queues.append(partial(repeat, iter_get_next(qiter), qprio))
                 wposes = qposes
 
                 ioffs = 0
@@ -270,10 +280,10 @@ class ThreadPool:
                         del queues[ioffs]
                 retry = can_straggle and len(iqueue) != ilen
             self.__worklen = len(iqueue)
-            self.__dequeue = iter(iqueue).next
+            self.__dequeue = iter_get_next(iter(iqueue))
             if itotal:
                 ftotal = float(itotal)
-                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iquantities.iteritems()])
+                self.__busyfactors = dict([(qname, quant/ftotal) for qname,quant in iteritems(iquantities)])
             else:
                 self.__busyfactors = {}
         elif self.__dequeue is not self.__exhausted:
