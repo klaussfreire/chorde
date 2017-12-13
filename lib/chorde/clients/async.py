@@ -13,7 +13,7 @@ import threading
 import operator
 import sys
 
-from chorde.py6 import itervalues, viewkeys
+from chorde.py6 import itervalues, viewkeys, iter_get_next
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be

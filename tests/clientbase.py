@@ -69,7 +69,7 @@ class CacheClientTestMixIn:
     def testGetMulti(self):
         client = self.client
         client.put(4, 10, 10)
-        self.assertItemsEqual([(3,None), (4,10), (5,None)], list(client.getMulti([3,4,5], None)))
+        self.assertCountEqual([(3,None), (4,10), (5,None)], list(client.getMulti([3,4,5], None)))
 
     def testGetPromoteCB(self):
         from chorde.clients.inproc import InprocCacheClient
@@ -131,7 +131,7 @@ class CacheClientTestMixIn:
         time.sleep(0.1)
         rv = dict(client.getTtlMulti([3, 4, 5], None))
         rv[4] = (rv[4][0], rv[4][1] < 10)
-        self.assertItemsEqual([(3, (None, -1)), (4, (10, True)), (5, (None, -1))], rv.items())
+        self.assertCountEqual([(3, (None, -1)), (4, (10, True)), (5, (None, -1))], rv.items())
 
     def testGetTtlSkip(self):
         client = self.client
@@ -149,7 +149,7 @@ class CacheClientTestMixIn:
         rv = dict(client.getTtlMulti([4,5], None, ttl_skip = 10))
         rv[5] = (rv[5][0], min(rv[5][1], 12))
         rv[4] = (rv[4][0], max(rv[4][1], 10))
-        self.assertItemsEqual(
+        self.assertCountEqual(
             [(4, (10, 10)), (5, (11, 12))],
             rv.items())
 

@@ -4,6 +4,7 @@ from __future__ import absolute_import
 import unittest
 
 from chorde import pylrucache
+from chorde.py6 import lzip
 
 try:
     from chorde import lrucache
@@ -13,7 +14,7 @@ except ImportError:
     skipIfNoLRUCache = unittest.skip("Optimized LRUCache not built in")
 
 class PyLRUCacheTest(unittest.TestCase):
-    TEST_ELEMENTS = zip(range(10), range(10,20))
+    TEST_ELEMENTS = lzip(range(10), range(10,20))
     Cache = pylrucache.LRUCache
 
     def testAdd(self, **kwargs):

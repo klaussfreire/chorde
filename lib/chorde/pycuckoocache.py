@@ -4,6 +4,7 @@ from random import random
 import functools
 
 from chorde.clients.base import CacheMissError
+from chorde.py6 import xrange
 
 class _node(object):
     __slots__ = ( 'key', 'value', 'h1', 'h2', 'prio' )

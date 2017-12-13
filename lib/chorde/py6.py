@@ -42,8 +42,8 @@ try:
 except ImportError:
     izip = zip
     imap = map
-    def lzip(x):
-        return list(zip(x))
+    def lzip(*args):
+        return list(zip(*args))
     def lmap(f, x):
         return list(map(f, x))
 
