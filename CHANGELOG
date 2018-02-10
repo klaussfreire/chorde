@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented here.
 
+## [0.3.2] - Unreleased
+### Bugfixes
+- Fix behavior of ttl_spread when used in coherent_cached.
+  Coherent freshness checks would use the nominal async_ttl
+  instead of the effective async_ttl, causing coherence
+  protocol to abort computations and making all refresh
+  operations bunch together at nominal async_ttl instead
+
 ## [0.3.1] - 2018-02-07
 ### Bugfixes
 - Fix broker state listener states on some corner-case

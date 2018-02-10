@@ -1349,8 +1349,8 @@ if not no_coherence:
                 future_sync_check = future_sync_check,
                 ttl_spread = ttl_spread,
                 _eff_async_ttl = eff_async_ttl,
-                _put_deferred = partial(_coherent_put_deferred, nshared, async_ttl, None),
-                _fput_deferred = partial(_coherent_put_deferred, nshared, async_ttl, wait_time=wait_time) )(f)
+                _put_deferred = partial(_coherent_put_deferred, nshared, eff_async_ttl, None),
+                _fput_deferred = partial(_coherent_put_deferred, nshared, eff_async_ttl, wait_time=wait_time) )(f)
             rv.coherence = coherence_manager
             rv.ipsub = ipsub
             return rv
