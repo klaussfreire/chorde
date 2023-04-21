@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.3] - 2023-04-21
+### Bugfixes
+- Various string encoding fixes
+
 ## [1.0.0] - 2023-03-02
 ### Removed
 - Dropped Python 2.x support
