@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [1.0.4] - Unreleased
+## [1.0.4] - 2023-05-15
 ### Bugfixes
 - Fix empty reason field when re-raising tornado.web.HTTPError
 
