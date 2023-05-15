@@ -18,6 +18,13 @@ functools_partial = functools.partial
 cdef bint strip_tracebacks
 strip_tracebacks = False
 
+cdef object _HTTPError = None
+
+try:
+    from tornado.web import HTTPError as _HTTPError
+except ImportError:
+    pass
+
 
 def set_strip_tracebacks(bint strip):
     """ Sets traceback stripping behavior for async futures
@@ -51,7 +58,12 @@ cdef class ExceptionWrapper:
             del exc
         try:
             if not strip:
-                raise exc_typ(*exc_obj.args) from exc_obj
+                kwargs = {}
+                if isinstance(exc_obj, _HTTPError):
+                    # Workaround for tornado's HTTPError which does not function
+                    # correctly without a reason, and reason is given only as kwarg
+                    kwargs["reason"] = exc_obj.reason
+                raise exc_typ(*exc_obj.args, **kwargs) from exc_obj
             elif exc_tb is not None:
                 if exc_obj is not None:
                     if getattr(exc_obj, '__traceback__') is not exc_tb:
