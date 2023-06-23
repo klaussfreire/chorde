@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.5] - 2023-06-23
+### Bugfixes
+- Allow sPickle to accept strings as checksum keys, automatically
+  encode them as UTF8 to get byte keys, as most people would expect
+  string keys to work.
+
 ## [1.0.4] - 2023-05-15
 ### Bugfixes
 - Fix empty reason field when re-raising tornado.web.HTTPError

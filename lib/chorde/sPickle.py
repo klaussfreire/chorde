@@ -1,26 +1,11 @@
 # -*- coding: utf-8 -*-
-# This monster makes it all compatible with up to py2.0 :-o
 
 __all__ = [
     "SecurePickler",
     "SecureUnpickler",
 ]
 
-#lint:disable
-try:
-    from hashlib import sha256 as checksum_algo
-except ImportError:
-    try:
-        from hashlib import sha1 as checksum_algo
-    except ImportError:
-        try:
-            from hashlib import md5 as checksum_algo
-        except ImportError:
-            try:
-                from sha import sha as checksum_algo
-            except ImportError:
-                from md5 import md5 as checksum_algo
-#lint:enable
+from hashlib import sha256 as checksum_algo
 checksum_algo_name = checksum_algo.__name__.replace('openssl_','')
 
 import hmac
@@ -33,6 +18,9 @@ from io import BytesIO  # lint:ok
 
 class SecurePickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
+        if isinstance(checksum_key, str):
+            checksum_key = checksum_key.encode("utf8")
+
         self.file = file
         self.checksum_key = checksum_key
 
