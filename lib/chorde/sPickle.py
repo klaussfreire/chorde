@@ -79,6 +79,9 @@ class SecurePickler(object):
 
 class SecureUnpickler(object):
     def __init__(self, checksum_key, file, *p, **kw):
+        if isinstance(checksum_key, str):
+            checksum_key = checksum_key.encode("utf8")
+
         self.file = file
         self.checksum_key = checksum_key
 
