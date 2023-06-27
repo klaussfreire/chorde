@@ -59,7 +59,7 @@ cdef class ExceptionWrapper:
         try:
             if not strip:
                 kwargs = {}
-                if isinstance(exc_obj, _HTTPError):
+                if _HTTPError is not None and isinstance(exc_obj, _HTTPError):
                     # Workaround for tornado's HTTPError which does not function
                     # correctly without a reason, and reason is given only as kwarg
                     kwargs["reason"] = exc_obj.reason
