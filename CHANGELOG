@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [1.0.5] - 2023-06-23
+## [1.0.5] - 2023-06-27
 ### Bugfixes
 - Allow sPickle to accept strings as checksum keys, automatically
   encode them as UTF8 to get byte keys, as most people would expect
