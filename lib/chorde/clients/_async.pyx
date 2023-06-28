@@ -65,6 +65,15 @@ cdef class ExceptionWrapper:
                     kwargs["reason"] = exc_obj.reason
                 raise exc_typ(*exc_obj.args, **kwargs) from exc_obj
             elif exc_tb is not None:
+                # clear any non-running traceback's frames to avoid leaking locals
+                tb = exc_tb
+                while tb is not None:
+                    try:
+                        tb.tb_frame.clear()
+                    except:
+                        pass
+                    tb = tb.tb_next
+
                 if exc_obj is not None:
                     if getattr(exc_obj, '__traceback__') is not exc_tb:
                         exc_obj = exc_obj.with_traceback(exc_tb)
