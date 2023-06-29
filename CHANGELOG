@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.7] - Unreleased
+### Bugfixes
+- Prevent memory leaks by clearing non-running traceback
+  frames from exceptions set as future results.
+
 ## [1.0.6] - 2023-06-27
 ### Bugfixes
 - Allow sPickle unpicklers to accept strings as checksum keys
