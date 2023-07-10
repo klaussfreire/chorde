@@ -39,8 +39,8 @@ class TestTornadoIntegration(AsyncTestCase):
 
     @gen_test
     def test_no_patch(self):
-        with self.assertRaises(BadYieldError):
-            yield self.foo()
+        # Should work nonetheless, as our Future is an awaitable
+        yield self.foo()
 
     @gen_test
     def test_patched(self):

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.8] - 2023-07-10
+### Added
+- chorde.client.asynf.Future is now awaitable
+
 ## [1.0.7] - 2023-06-29
 ### Bugfixes
 - Prevent memory leaks by clearing non-running traceback
