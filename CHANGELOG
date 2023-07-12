@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [1.0.8] - 2023-07-11
+## [1.0.8] - 2023-07-12
 ### Added
 - chorde.client.asyncache.Future is now awaitable
 
