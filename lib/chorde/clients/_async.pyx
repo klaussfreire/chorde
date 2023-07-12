@@ -224,6 +224,11 @@ cdef class Future:
             # wake up waiting threads
             self._done_event.set()
 
+    def __await__(self):
+        if not self.c_done():
+            return (yield self)
+        return self.c_result(0, 1)
+
     def set_result(self, value):
         self.set(value)
 

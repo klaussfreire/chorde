@@ -1004,6 +1004,11 @@ except ImportError:
 
         set_result = set
 
+        def __await__(self):
+            if not self.done():
+                return (yield self)
+            return self.result(0)
+
         def miss(self):
             """
             Shorthand for setting a cache miss result
