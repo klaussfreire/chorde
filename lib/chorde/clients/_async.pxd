@@ -2,6 +2,7 @@ cdef class Future:
     cdef list _cb
     cdef object _value, _logger, _done_event, __weakref__
     cdef int _running, _cancel_pending, _cancelled
+    cdef public bint _asyncio_future_blocking
 
     cdef int c_done(self) except -1
     cdef c_result(self, timeout, int norecurse)

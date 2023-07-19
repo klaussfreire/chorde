@@ -2,6 +2,7 @@ import functools
 import weakref
 import threading
 import logging
+import asyncio
 
 import cython
 
@@ -176,6 +177,7 @@ cdef class Future:
         self._running = 0
         self._cancel_pending = 0
         self._cancelled = 0
+        self._asyncio_future_blocking = True
 
     cpdef _set_nothreads(self, value):
         """
@@ -226,8 +228,12 @@ cdef class Future:
 
     def __await__(self):
         if not self.c_done():
-            return (yield self)
+            yield self
         return self.c_result(0, 1)
+
+    @property
+    def _loop(self):
+        return asyncio.get_running_loop()
 
     def set_result(self, value):
         self.set(value)
@@ -336,11 +342,13 @@ cdef class Future:
             callback(self._value)
         return self
 
-    def add_done_callback(self, callback):
+    def add_done_callback(self, callback, *, context=None):
         """
         When the operatio is done, the callback will be invoked with the
         future object as argument.
         """
+        if context is not None:
+            callback = functools_partial(context.run, callback)
         return self._on_stuff(WeakCallback.__new__(WeakCallback, self, callback))
 
     cdef int c_done(self) except -1:
