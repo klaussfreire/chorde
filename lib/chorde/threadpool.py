@@ -285,7 +285,7 @@ class ThreadPool:
             # until now, pushing threads didn't set the weakeup call event.
             # So, before actually sleeping, try again
             self.__swap_queues()
-        elif self.__not_empty.isSet():
+        elif self.__not_empty.is_set():
             # Try again
             # Someone may have sneaked in while we were in the above case
             # and may still neak in after we clear the not_empty event
@@ -304,7 +304,7 @@ class ThreadPool:
         workset = self.__workset
         termcount = 0
         while True:
-            if (self.__dequeue is self.__exhausted and not self.__not_empty.isSet()
+            if (self.__dequeue is self.__exhausted and not self.__not_empty.is_set()
                     and (not self.queues or not any(self.queues.values()))):
                 # Sounds like there's nothing to do
                 # Yeah, gonna wait
@@ -358,10 +358,10 @@ class ThreadPool:
         # just-queued value, so avoid the actual operation
         # (which is much more expensive than checking)
         not_empty = self.__not_empty
-        if not not_empty.isSet():
+        if not not_empty.is_set():
             not_empty.set()
         empty = self.__empty
-        if empty.isSet():
+        if empty.is_set():
             empty.clear()
 
         self.assert_started()
