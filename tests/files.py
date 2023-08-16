@@ -137,7 +137,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
         maxentries = SIZE // len(bigval)
 
         for i in range(maxentries+1):
-            client.put(i, bigval+bytes(i), 86400)
+            client.put(i, bigval+str(i).encode(), 86400)
 
             time.sleep(TIME_RESOLUTION*2)
 
@@ -146,7 +146,7 @@ class FilesTest(WithTempdir, CacheClientTestMixIn, unittest.TestCase):
             self.assertTrue(client.contains(i))
             cachedval = client.get(i)
             self.assertTrue(bytearray(cachedval)[:len(bigval)] == bytearray(bigval))
-            self.assertTrue(bytearray(cachedval)[len(bigval):] == bytearray(bytes(i)))
+            self.assertTrue(bytearray(cachedval)[len(bigval):] == bytearray(str(i).encode()))
             del cachedval
         self.assertFalse(client.contains(0))
         self.assertTrue(client.contains(maxentries//2))

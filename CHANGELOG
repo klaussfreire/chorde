@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.10] - 2023-07-20
+### Bugfixes
+- Fix an instance of overallocation that could turn into a DoS
+  where we could be allocating arbitrarily large byte arrays.
+  This was affecting mostly the coherence protocol in some
+  exceptional circumstances.
+
 ## [1.0.9] - 2023-07-20
 ### Added
 - Fix Future's await implementation to be compatible with asyncio

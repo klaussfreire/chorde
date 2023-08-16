@@ -675,7 +675,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = next(iter(keys))
-            self.ipsub.publish_encode(self.doneprefix+bytes(self.stable_hash(first_key)), self.encoding,
+            self.ipsub.publish_encode(self.doneprefix+str(self.stable_hash(first_key)).encode(), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -686,7 +686,7 @@ class CoherenceManager(object):
             if txid is None:
                 txid = self.txid
             first_key = next(iter(keys))
-            self.ipsub.publish_encode(self.abortprefix+bytes(self.stable_hash(first_key)), self.encoding,
+            self.ipsub.publish_encode(self.abortprefix+str(self.stable_hash(first_key)).encode(), self.encoding,
                 (txid, keys, self.p2p_pub_binds),
                 timeout = timeout)
         return NoopWaiter()
@@ -719,7 +719,7 @@ class CoherenceManager(object):
             return True
 
         ipsub_ = self.ipsub
-        keysuffix = bytes(self.stable_hash(key))
+        keysuffix = str(self.stable_hash(key)).encode()
         doneprefix = self.doneprefix+keysuffix
         abortprefix = self.abortprefix+keysuffix
 
