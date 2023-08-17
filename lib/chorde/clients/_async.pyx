@@ -406,7 +406,7 @@ cdef class Future:
         else:
             return False
 
-    def cancel(self):
+    def cancel(self, msg=None):
         """
         Request cancelling of the operation. If the operation cannot be cancelled,
         it will return False. Otherwise, it will return True.

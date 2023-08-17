@@ -3,6 +3,7 @@ import time
 import unittest
 import threading
 import functools
+import asyncio
 
 from .clientbase import CacheClientTestMixIn, CacheMissError, TimeoutError
 
@@ -65,6 +66,27 @@ class FutureTest(unittest.TestCase):
         f.on_any_once(badcall,badcall,badcall)
         f.set(3)
         self.assertEquals(["val"], rv)
+
+    def testAwaitable(self):
+        from chorde.clients.asyncache import Future
+        TIMEOUT = 5
+        f = Future()
+        async def p1():
+            f.set(1)
+        async def p2():
+            return await f
+        async def all():
+            async with asyncio.timeout(TIMEOUT):
+                # Even if it times out, gather can still return the
+                # correct thing because the futures will be done by then.
+                # Timing matters in this test.
+                return await asyncio.gather(p1(), p2())
+        loop = asyncio.get_event_loop()
+        t0 = time.time()
+        rv = loop.run_until_complete(all())
+        t1 = time.time()
+        self.assertEqual(rv, [None, 1])
+        self.assertLess(t1 - t0, TIMEOUT)
 
 class AsyncTest(CacheClientTestMixIn, unittest.TestCase):
     # Hard to guarantee LRU logic with an async writing queue
@@ -242,6 +264,29 @@ class AsyncProcessorTest(unittest.TestCase):
         self.assertFalse(contains2.result(1))
         self.assertEquals(get1.result(1), 2)
         self.assertRaises(CacheMissError, get2.result, 1)
+
+    def testAsyncParallel(self):
+        # don't wait for it, we have 1 thread, it should respect FIFO
+        self.client.put(1, 2, 120)
+        contains1 = self.client.contains(1)
+        contains2 = self.client.contains(2)
+        get1 = self.client.get(1)
+        get2 = self.client.get(2, None)
+        TIMEOUT = 5
+
+        async def waitall():
+            async with asyncio.timeout(TIMEOUT):
+                # Even if it times out, gather can still return the
+                # correct thing because the futures will be done by then.
+                # Timing matters in this test.
+                return await asyncio.gather(contains1, contains2, get1, get2)
+
+        ioloop = asyncio.get_event_loop()
+        t1 = time.time()
+        rv = ioloop.run_until_complete(waitall())
+        t2 = time.time()
+        self.assertEqual(rv, [True, False, 2, None])
+        self.assertLess(t2 - t1, TIMEOUT)
 
     def testCoalescence(self):
         # Poor man's mock

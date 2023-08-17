@@ -1186,7 +1186,7 @@ except ImportError:
             """
             return getattr(self, '_cancel_pending', False)
 
-        def cancel(self, getattr=getattr):
+        def cancel(self, getattr=getattr, msg=None):
             """
             Request cancelling of the operation. If the operation cannot be cancelled,
             it will return False. Otherwise, it will return True.
