@@ -10,6 +10,7 @@ All notable changes to this project will be documented here.
   exceptional circumstances.
 - Make ``Future.add_done_callback`` work properly from inside
   an asyncio event loop.
+- Restrict cython to below 3.x (can't build with Cython 3 yet)
 
 ## [1.0.9] - 2023-07-20
 ### Added
