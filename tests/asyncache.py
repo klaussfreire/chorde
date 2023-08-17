@@ -76,11 +76,12 @@ class FutureTest(unittest.TestCase):
         async def p2():
             return await f
         async def all():
-            async with asyncio.timeout(TIMEOUT):
-                # Even if it times out, gather can still return the
-                # correct thing because the futures will be done by then.
-                # Timing matters in this test.
-                return await asyncio.gather(p1(), p2())
+            # Even if it times out, gather can still return the
+            # correct thing because the futures will be done by then.
+            # Timing matters in this test.
+            return await asyncio.gather(
+                asyncio.wait_for(p1(), TIMEOUT),
+                asyncio.wait_for(p2(), TIMEOUT))
         loop = asyncio.get_event_loop()
         t0 = time.time()
         rv = loop.run_until_complete(all())
@@ -275,11 +276,14 @@ class AsyncProcessorTest(unittest.TestCase):
         TIMEOUT = 5
 
         async def waitall():
-            async with asyncio.timeout(TIMEOUT):
-                # Even if it times out, gather can still return the
-                # correct thing because the futures will be done by then.
-                # Timing matters in this test.
-                return await asyncio.gather(contains1, contains2, get1, get2)
+            # Even if it times out, gather can still return the
+            # correct thing because the futures will be done by then.
+            # Timing matters in this test.
+            return await asyncio.gather(
+                asyncio.wait_for(contains1, TIMEOUT),
+                asyncio.wait_for(contains2, TIMEOUT),
+                asyncio.wait_for(get1, TIMEOUT),
+                asyncio.wait_for(get2, TIMEOUT))
 
         ioloop = asyncio.get_event_loop()
         t1 = time.time()
