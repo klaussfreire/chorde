@@ -9,6 +9,7 @@ import _thread as thread
 import threading
 import operator
 import sys
+import asyncio
 
 # No need for real multiprocessing. In fact, using real
 # multiprocessing would force pickling of values, which would be
@@ -1143,6 +1144,17 @@ except ImportError:
             future object as argument.
             """
             me = weakref.ref(self)
+
+            try:
+                ioloop = asyncio.get_running_loop()
+                _cb  = callback
+                def callback(f):
+                    # Within an asyncio event loop, the callback must always be called from the event
+                    # loop itself to ensure thread safety.
+                    ioloop.call_soon_threadsafe(_cb, f)
+            except RuntimeError:
+                pass
+
             def weak_callback(value):
                 self = me()
                 if self is not None:
@@ -1174,7 +1186,7 @@ except ImportError:
             """
             return getattr(self, '_cancel_pending', False)
 
-        def cancel(self, getattr=getattr):
+        def cancel(self, getattr=getattr, msg=None):
             """
             Request cancelling of the operation. If the operation cannot be cancelled,
             it will return False. Otherwise, it will return True.

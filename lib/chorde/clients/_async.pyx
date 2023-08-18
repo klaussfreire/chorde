@@ -349,6 +349,15 @@ cdef class Future:
         """
         if context is not None:
             callback = functools_partial(context.run, callback)
+        try:
+            ioloop = asyncio.get_running_loop()
+            _cb  = callback
+            def callback(f):
+                # Within an asyncio event loop, the callback must always be called from the event
+                # loop itself to ensure thread safety.
+                ioloop.call_soon_threadsafe(_cb, f)
+        except RuntimeError:
+            pass
         return self._on_stuff(WeakCallback.__new__(WeakCallback, self, callback))
 
     cdef int c_done(self) except -1:
@@ -397,7 +406,7 @@ cdef class Future:
         else:
             return False
 
-    def cancel(self):
+    def cancel(self, msg=None):
         """
         Request cancelling of the operation. If the operation cannot be cancelled,
         it will return False. Otherwise, it will return True.
