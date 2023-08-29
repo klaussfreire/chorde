@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [1.0.10] - Unreleased
+## [1.0.10] - 2023-08-29
 ### Bugfixes
 - Fix an instance of overallocation that could turn into a DoS
   where we could be allocating arbitrarily large byte arrays.
