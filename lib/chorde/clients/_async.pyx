@@ -60,11 +60,18 @@ cdef class ExceptionWrapper:
         try:
             if not strip:
                 kwargs = {}
+                exc_args = exc_obj.args
                 if _HTTPError is not None and isinstance(exc_obj, _HTTPError):
                     # Workaround for tornado's HTTPError which does not function
-                    # correctly without a reason, and reason is given only as kwarg
+                    # correctly without a reason, and reason is given only as kwarg,
+                    # and does not even store the argument in args as other exceptions do
                     kwargs["reason"] = exc_obj.reason
-                raise exc_typ(*exc_obj.args, **kwargs) from exc_obj
+                    if not exc_args:
+                        try:
+                            exc_args = (exc_obj.status_code, exc_obj.log_message)
+                        except AttributeError:
+                            pass
+                raise exc_typ(*exc_args, **kwargs) from exc_obj
             elif exc_tb is not None:
                 # clear any non-running traceback's frames to avoid leaking locals
                 tb = exc_tb

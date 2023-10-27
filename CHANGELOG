@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.11] - Unreleased
+### Bugfixes
+- Fix reraising of tornado.web.HTTPError from inside async
+  futures. Tornado exceptions don't behave as other exceptions
+  and need special treatment
+
 ## [1.0.10] - 2023-08-29
 ### Bugfixes
 - Fix an instance of overallocation that could turn into a DoS
