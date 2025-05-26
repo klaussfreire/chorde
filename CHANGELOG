@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [1.0.12] - 2025-05-26
+### Bugfixes
+- Fixed numpy use of deprecated boolean dtype by replacing
+  `numpy.bool8` with `numpy.bool_`
+
 ## [1.0.11] - 2023-10-27
 ### Bugfixes
 - Fix reraising of tornado.web.HTTPError from inside async
