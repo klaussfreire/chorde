@@ -384,7 +384,7 @@ class SharedCounterGenericBase(object):
 if numpy is not None:
 
     class SharedCounterBaseNumpyCtypes(SharedCounterGenericBase):
-        btype = numpy.bool8
+        btype = numpy.bool_
         bitmap_item_size = btype().itemsize
 
         @staticmethod
@@ -418,7 +418,7 @@ if numpy is not None:
             super(SharedCounterBaseNumpyCtypes, self).__init__(slots, bitmap, counters, locked, bitmap_slot)
 
             # Fast read-only bitmap ]:-]
-            self.bitmap = numpy.frombuffer(buf, numpy.bool8, slots, offset)
+            self.bitmap = numpy.frombuffer(buf, numpy.bool_, slots, offset)
 
             # Map my slot as a single item, it makes += atomic
             self.myslot = self.cdtype.from_buffer(buf,
@@ -438,7 +438,7 @@ if numpy is not None:
 
 
     class SharedCounterBaseNumpy(SharedCounterGenericBase):
-        btype = numpy.bool8
+        btype = numpy.bool_
         bitmap_item_size = btype().itemsize
 
         @staticmethod
@@ -497,7 +497,7 @@ if numpy is not None:
 
 
     class SharedCounterBaseReadOnlyNumpy(SharedCounterGenericBase):
-        btype = numpy.bool8
+        btype = numpy.bool_
         cbtype = ctypes.c_bool
         bitmap_item_size = btype().itemsize
 
